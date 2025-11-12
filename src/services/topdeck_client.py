@@ -68,12 +68,35 @@ class TopDeckClient:
                 response.raise_for_status()
                 return response.json()
             except requests.exceptions.HTTPError as e:
+                # Try to get error details from response body
+                error_details = None
+                try:
+                    if hasattr(response, 'text') and response.text:
+                        error_details = response.text
+                    if hasattr(response, 'json'):
+                        try:
+                            error_json = response.json()
+                            error_details = error_json
+                        except (ValueError, AttributeError):
+                            pass
+                except Exception:
+                    pass
+                
                 if response.status_code == 404:
                     logger.warning(f"Resource not found: {url}")
                     return None
                 elif response.status_code == 401:
                     logger.error("Invalid API key")
                     raise ValueError("Invalid TopDeck API key")
+                elif response.status_code == 400:
+                    # Bad Request - log details for debugging
+                    error_msg = f"Bad Request (400) for {url}"
+                    if error_details:
+                        error_msg += f": {error_details}"
+                    if 'json' in kwargs:
+                        error_msg += f" | Request body: {kwargs['json']}"
+                    logger.error(error_msg)
+                    raise ValueError(f"TopDeck API Bad Request: {error_details or 'Invalid request parameters'}")
                 elif response.status_code == 429:
                     # Rate limited - wait longer
                     wait_time = self.RETRY_DELAY * (2 ** attempt)
@@ -87,7 +110,10 @@ class TopDeckClient:
                     time.sleep(wait_time)
                     continue
                 else:
-                    logger.error(f"HTTP error {response.status_code}: {e}")
+                    error_msg = f"HTTP error {response.status_code}: {e}"
+                    if error_details:
+                        error_msg += f" | Details: {error_details}"
+                    logger.error(error_msg)
                     raise
             except requests.exceptions.RequestException as e:
                 if attempt < self.MAX_RETRIES - 1:

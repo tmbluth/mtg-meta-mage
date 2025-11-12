@@ -60,12 +60,15 @@ class DatabaseConnection:
     def get_connection(cls) -> connection:
         """Get a connection from the pool"""
         if cls._connection_pool is None:
+            logger.debug("Connection pool not initialized, initializing now")
             cls.initialize_pool()
         
         try:
             conn = cls._connection_pool.getconn()
             if conn is None:
+                logger.error("Failed to get connection from pool: connection is None")
                 raise RuntimeError("Failed to get connection from pool")
+            logger.debug("Successfully retrieved connection from pool")
             return conn
         except Exception as e:
             logger.error(f"Failed to get connection from pool: {e}")
@@ -99,19 +102,24 @@ class DatabaseConnection:
         try:
             conn = cls.get_connection()
             cur = conn.cursor()
+            logger.debug("Database cursor created")
             yield cur
             if commit:
+                logger.debug("Committing transaction")
                 conn.commit()
             else:
+                logger.debug("Rolling back transaction (no commit requested)")
                 conn.rollback()
         except Exception as e:
             if conn:
+                logger.debug("Rolling back transaction due to error")
                 conn.rollback()
             logger.error(f"Database operation failed: {e}")
             raise
         finally:
             if conn:
                 cur.close()
+                logger.debug("Cursor closed, returning connection to pool")
                 cls.return_connection(conn)
     
     @classmethod
@@ -126,15 +134,20 @@ class DatabaseConnection:
         conn = None
         try:
             conn = cls.get_connection()
+            logger.debug("Transaction started")
             yield conn
+            logger.debug("Committing transaction")
             conn.commit()
+            logger.debug("Transaction committed successfully")
         except Exception as e:
             if conn:
+                logger.debug("Rolling back transaction due to error")
                 conn.rollback()
             logger.error(f"Transaction failed: {e}")
             raise
         finally:
             if conn:
+                logger.debug("Returning connection to pool")
                 cls.return_connection(conn)
     
     @classmethod

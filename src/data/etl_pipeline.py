@@ -2,7 +2,7 @@
 
 import time
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import execute_batch
@@ -76,6 +76,9 @@ class ETLPipeline:
             tournament: Tournament dictionary from API
             conn: Database connection
         """
+        tournament_id = tournament.get('TID')
+        logger.debug(f"Inserting tournament {tournament_id}")
+        
         cur = conn.cursor()
         try:
             event_data = tournament.get('eventData', {})
@@ -107,8 +110,9 @@ class ETLPipeline:
                     event_data.get('state')
                 )
             )
+            logger.debug(f"Successfully inserted tournament {tournament_id}")
         except Exception as e:
-            logger.error(f"Error inserting tournament {tournament.get('TID')}: {e}")
+            logger.error(f"Error inserting tournament {tournament_id}: {e}")
             raise
         finally:
             cur.close()
@@ -123,7 +127,10 @@ class ETLPipeline:
             conn: Database connection
         """
         if not players:
+            logger.debug(f"No players to insert for tournament {tournament_id}")
             return
+        
+        logger.debug(f"Inserting {len(players)} players for tournament {tournament_id}")
         
         cur = conn.cursor()
         try:
@@ -167,6 +174,7 @@ class ETLPipeline:
                 """,
                 player_data
             )
+            logger.info(f"Successfully inserted {len(player_data)} players for tournament {tournament_id}")
         except Exception as e:
             logger.error(f"Error inserting players for tournament {tournament_id}: {e}")
             raise
@@ -183,6 +191,7 @@ class ETLPipeline:
             conn: Database connection
         """
         if not players:
+            logger.debug(f"No players provided for decklist insertion for tournament {tournament_id}")
             return
         
         cur = conn.cursor()
@@ -208,6 +217,7 @@ class ETLPipeline:
                     """,
                     decklist_data
                 )
+                logger.info(f"Successfully inserted {len(decklist_data)} decklists for tournament {tournament_id}")
         except Exception as e:
             logger.error(f"Error inserting decklists for tournament {tournament_id}: {e}")
             raise
@@ -224,10 +234,20 @@ class ETLPipeline:
             conn: Database connection
         """
         if not rounds_data:
+            logger.debug(f"No rounds data for tournament {tournament_id}")
             return
+        
+        logger.debug(f"Inserting match rounds for tournament {tournament_id}: {len(rounds_data)} rounds")
         
         cur = conn.cursor()
         try:
+            # First, get all player IDs that exist for this tournament
+            cur.execute(
+                "SELECT player_id FROM players WHERE tournament_id = %s",
+                (tournament_id,)
+            )
+            existing_player_ids = {row[0] for row in cur.fetchall()}
+            logger.debug(f"Found {len(existing_player_ids)} existing players for tournament {tournament_id}")
             # Map string rounds to integers (e.g., "Top 8" -> 1000, "Top 4" -> 2000)
             # This ensures consistent round numbers for bracket rounds
             string_round_map = {
@@ -289,11 +309,15 @@ class ETLPipeline:
             
             # Insert matches
             match_data = []
+            skipped_matches = 0
+            missing_players = set()
+            
             for round_info in rounds_data:
                 round_identifier = round_info.get('round')
                 round_number = round_number_map.get(round_identifier)
                 
                 if round_number is None:
+                    logger.debug(f"Skipping round {round_identifier} for tournament {tournament_id} (no round number)")
                     continue
                 
                 tables = round_info.get('tables', [])
@@ -303,11 +327,31 @@ class ETLPipeline:
                     
                     players = table.get('players', [])
                     if len(players) > 2:
+                        logger.debug(f"Skipping match with {len(players)} players (not 1v1)")
                         continue
                     
-                    player1_id = players[0].get('id')
+                    player1_id = players[0].get('id') if len(players) > 0 else None
                     player2_id = players[1].get('id') if len(players) > 1 else None
                     winner_id = table.get('winner_id')
+                    
+                    # Validate that players exist in the database
+                    if player1_id and player1_id not in existing_player_ids:
+                        logger.warning(
+                            f"Skipping match in tournament {tournament_id}, round {round_number}: "
+                            f"player1_id {player1_id} not found in players table"
+                        )
+                        missing_players.add(player1_id)
+                        skipped_matches += 1
+                        continue
+                    
+                    if player2_id and player2_id not in existing_player_ids:
+                        logger.warning(
+                            f"Skipping match in tournament {tournament_id}, round {round_number}: "
+                            f"player2_id {player2_id} not found in players table"
+                        )
+                        missing_players.add(player2_id)
+                        skipped_matches += 1
+                        continue
                     
                     match_data.append((
                         round_number,
@@ -319,7 +363,14 @@ class ETLPipeline:
                         table.get('status', '')
                     ))
             
+            if skipped_matches > 0:
+                logger.warning(
+                    f"Skipped {skipped_matches} matches for tournament {tournament_id} due to missing players. "
+                    f"Missing player IDs: {missing_players}"
+                )
+            
             if match_data:
+                logger.debug(f"Inserting {len(match_data)} matches for tournament {tournament_id}")
                 execute_batch(
                     cur,
                     """
@@ -335,6 +386,9 @@ class ETLPipeline:
                     """,
                     match_data
                 )
+                logger.info(f"Successfully inserted {len(match_data)} matches for tournament {tournament_id}")
+            else:
+                logger.debug(f"No valid matches to insert for tournament {tournament_id}")
         except Exception as e:
             logger.error(f"Error inserting match rounds for tournament {tournament_id}: {e}")
             raise
@@ -363,20 +417,33 @@ class ETLPipeline:
                 self.insert_tournament(tournament, conn)
                 
                 # Get full tournament details for players
+                logger.debug(f"Fetching tournament details for {tournament_id}")
                 tournament_details = self.client.get_tournament_details(tournament_id)
                 if tournament_details:
                     players = tournament_details.get('players', [])
+                    logger.debug(f"Tournament details returned {len(players)} players for {tournament_id}")
                     if players:
                         self.insert_players(tournament_id, players, conn)
                         self.insert_decklists(tournament_id, players, conn)
+                    else:
+                        logger.warning(f"No players found in tournament details for {tournament_id}")
+                else:
+                    logger.warning(f"Failed to fetch tournament details for {tournament_id}")
                 
                 # Load rounds and matches if requested
                 if include_rounds:
+                    logger.debug(f"Fetching rounds data for tournament {tournament_id}")
                     rounds_data = self.client.get_tournament_rounds(tournament_id)
                     if rounds_data:
+                        logger.debug(f"Fetched {len(rounds_data)} rounds for tournament {tournament_id}")
                         filtered_rounds = filter_rounds_data(rounds_data)
+                        logger.debug(f"After filtering, {len(filtered_rounds)} rounds remain for tournament {tournament_id}")
                         if filtered_rounds:
                             self.insert_match_rounds(tournament_id, filtered_rounds, conn)
+                        else:
+                            logger.debug(f"No valid rounds after filtering for tournament {tournament_id}")
+                    else:
+                        logger.debug(f"No rounds data returned for tournament {tournament_id}")
                 
                 logger.info(f"Successfully loaded tournament {tournament_id}")
                 return True
@@ -396,17 +463,39 @@ class ETLPipeline:
         """
         logger.info(f"Starting initial load for past {days_back} days")
         
-        # Calculate date range
-        end_timestamp = int(time.time())
-        start_timestamp = int((datetime.now() - timedelta(days=days_back)).timestamp())
+        # Common competitive constructed formats (excluding Commander and Limited formats)
+        # The API requires both 'game' and 'format' parameters
+        formats = [
+            'Standard', 'Modern', 'Legacy', 'Vintage', 'Pioneer', 
+            'Pauper', 'Constructed'
+        ]
         
-        # Fetch tournaments
-        tournaments = self.client.get_tournaments(
-            game="Magic: The Gathering",
-            start=start_timestamp,
-            end=end_timestamp,
-            columns=["name", "decklist", "wins", "draws", "losses", "id"]
-        )
+        # Fetch tournaments for each format and combine results
+        all_tournaments = []
+        tournament_ids = set()  # Track IDs to avoid duplicates
+        
+        for format_name in formats:
+            try:
+                tournaments = self.client.get_tournaments(
+                    game="Magic: The Gathering",
+                    format=format_name,
+                    last=days_back
+                )
+                
+                if tournaments:
+                    # Deduplicate by TID
+                    for tournament in tournaments:
+                        tid = tournament.get('TID')
+                        if tid and tid not in tournament_ids:
+                            tournament_ids.add(tid)
+                            all_tournaments.append(tournament)
+                    
+                    logger.debug(f"Found {len(tournaments)} tournaments for {format_name}")
+            except Exception as e:
+                logger.warning(f"Error fetching tournaments for format {format_name}: {e}")
+                continue
+        
+        tournaments = all_tournaments
         
         if not tournaments:
             logger.warning("No tournaments found")
@@ -450,13 +539,42 @@ class ETLPipeline:
             return self.load_initial()
         
         # Fetch tournaments since last load
-        end_timestamp = int(time.time())
-        tournaments = self.client.get_tournaments(
-            game="Magic: The Gathering",
-            start=last_timestamp,
-            end=end_timestamp,
-            columns=["name", "decklist", "wins", "draws", "losses", "id"]
-        )
+        # Calculate days since last load to use 'last' parameter
+        days_since_last = int((time.time() - last_timestamp) / 86400) + 1  # Add 1 day buffer
+        
+        # Common competitive constructed formats (excluding Commander and Limited formats)
+        # The API requires both 'game' and 'format' parameters
+        formats = [
+            'Standard', 'Modern', 'Legacy', 'Vintage', 'Pioneer', 
+            'Pauper', 'Constructed'
+        ]
+        
+        # Fetch tournaments for each format and combine results
+        all_tournaments = []
+        tournament_ids = set()  # Track IDs to avoid duplicates
+        
+        for format_name in formats:
+            try:
+                format_tournaments = self.client.get_tournaments(
+                    game="Magic: The Gathering",
+                    format=format_name,
+                    last=days_since_last
+                )
+                
+                if format_tournaments:
+                    # Deduplicate by TID
+                    for tournament in format_tournaments:
+                        tid = tournament.get('TID')
+                        if tid and tid not in tournament_ids:
+                            tournament_ids.add(tid)
+                            all_tournaments.append(tournament)
+                    
+                    logger.debug(f"Found {len(format_tournaments)} new tournaments for {format_name}")
+            except Exception as e:
+                logger.warning(f"Error fetching tournaments for format {format_name}: {e}")
+                continue
+        
+        tournaments = all_tournaments
         
         if not tournaments:
             logger.info("No new tournaments found")

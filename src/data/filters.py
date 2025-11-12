@@ -16,6 +16,18 @@ COMMANDER_FORMATS = {
     'Oathbreaker'
 }
 
+# Limited formats to exclude (constructed-only database)
+LIMITED_FORMATS = {
+    'Draft',
+    'Sealed',
+    'Limited',
+    'Booster Draft',
+    'Sealed Deck',
+    'Cube Draft',
+    'Team Draft',
+    'Team Sealed'
+}
+
 
 def is_commander_format(format_name: str) -> bool:
     """
@@ -33,6 +45,22 @@ def is_commander_format(format_name: str) -> bool:
     return format_name.strip() in COMMANDER_FORMATS
 
 
+def is_limited_format(format_name: str) -> bool:
+    """
+    Check if a format is a Limited format (Draft, Sealed, etc.)
+    
+    Args:
+        format_name: Format name from API
+    
+    Returns:
+        True if format is a Limited format, False otherwise
+    """
+    if not format_name:
+        return False
+    
+    return format_name.strip() in LIMITED_FORMATS
+
+
 def should_include_tournament(tournament: Dict) -> bool:
     """
     Determine if a tournament should be included in the database
@@ -48,6 +76,11 @@ def should_include_tournament(tournament: Dict) -> bool:
     # Exclude Commander formats
     if is_commander_format(format_name):
         logger.debug(f"Excluding Commander tournament: {tournament.get('TID')} - {format_name}")
+        return False
+    
+    # Exclude Limited formats (constructed-only database)
+    if is_limited_format(format_name):
+        logger.debug(f"Excluding Limited tournament: {tournament.get('TID')} - {format_name}")
         return False
     
     # Must be Magic: The Gathering
@@ -84,18 +117,18 @@ def is_valid_match(table_data: Dict) -> bool:
 
 def filter_tournaments(tournaments: List[Dict]) -> List[Dict]:
     """
-    Filter tournaments to exclude Commander formats
+    Filter tournaments to exclude Commander formats and Limited formats
     
     Args:
         tournaments: List of tournament dictionaries
     
     Returns:
-        Filtered list of tournaments
+        Filtered list of tournaments (constructed-only)
     """
     filtered = [t for t in tournaments if should_include_tournament(t)]
     excluded_count = len(tournaments) - len(filtered)
     if excluded_count > 0:
-        logger.info(f"Filtered out {excluded_count} Commander/non-MTG tournaments")
+        logger.info(f"Filtered out {excluded_count} Commander/Limited/non-MTG tournaments")
     return filtered
 
 

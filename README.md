@@ -49,7 +49,7 @@ TOPDECK_API_KEY=your_topdeck_api_key
 
 1. Create a PostgreSQL database:
 ```bash
-createdb mtg_meta_mage
+createdb mtg-meta-mage-db
 ```
 
 2. Initialize the database schema:
@@ -135,6 +135,8 @@ mtg-meta-mage/
 │   ├── services/
 │   └── data/
 ├── tests/
+│   ├── unit/
+│   └── integration/
 ├── pyproject.toml
 └── README.md
 ```
