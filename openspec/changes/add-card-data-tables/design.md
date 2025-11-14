@@ -9,6 +9,8 @@ Scryfall provides bulk data exports via their API:
 
 TopDeck.gg provides decklists as text in a standard MTG format (quantity + card name, with mainboard/sideboard sections).
 
+**Note**: The `ScryfallClient` already implements bulk data downloading (`get_bulk_data_url`, `download_bulk_data`, `download_oracle_cards`, `download_rulings`) and joining cards with rulings (`join_cards_with_rulings`). However, `join_cards_with_rulings` currently returns rulings in a NoSQL DB format; we need to modify it to concatenate rulings with commas for structured database storage.
+
 ## Goals / Non-Goals
 
 ### Goals

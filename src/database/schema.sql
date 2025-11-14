@@ -79,6 +79,32 @@ CREATE TABLE IF NOT EXISTS load_metadata (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Cards table for storing Scryfall oracle card data
+CREATE TABLE IF NOT EXISTS cards (
+    card_id TEXT PRIMARY KEY,
+    set TEXT,
+    collector_num TEXT,
+    name TEXT NOT NULL,
+    oracle_text TEXT,
+    rulings TEXT,
+    type_line TEXT,
+    mana_cost TEXT,
+    cmc FLOAT,
+    color_identity TEXT[],
+    scryfall_uri TEXT
+);
+
+-- Deck cards junction table linking decklists to individual cards
+CREATE TABLE IF NOT EXISTS deck_cards (
+    decklist_id INTEGER NOT NULL,
+    card_id TEXT NOT NULL,
+    section TEXT NOT NULL CHECK (section IN ('mainboard', 'sideboard')),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    PRIMARY KEY (decklist_id, card_id, section),
+    FOREIGN KEY (decklist_id) REFERENCES decklists(decklist_id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(card_id) ON DELETE CASCADE
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_tournaments_format ON tournaments(format);
 CREATE INDEX IF NOT EXISTS idx_tournaments_start_date ON tournaments(start_date);
@@ -88,6 +114,14 @@ CREATE INDEX IF NOT EXISTS idx_players_standing ON players(tournament_id, standi
 CREATE INDEX IF NOT EXISTS idx_decklists_player_tournament ON decklists(player_id, tournament_id);
 CREATE INDEX IF NOT EXISTS idx_matches_tournament ON matches(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_matches_players ON matches(player1_id, player2_id);
+
+-- Indexes for cards table
+CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);
+CREATE INDEX IF NOT EXISTS idx_cards_color_identity ON cards USING GIN(color_identity);
+
+-- Indexes for deck_cards table
+CREATE INDEX IF NOT EXISTS idx_deck_cards_decklist_id ON deck_cards(decklist_id);
+CREATE INDEX IF NOT EXISTS idx_deck_cards_card_id ON deck_cards(card_id);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -99,6 +133,7 @@ END;
 $$ language 'plpgsql';
 
 -- Trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS update_tournaments_updated_at ON tournaments;
 CREATE TRIGGER update_tournaments_updated_at BEFORE UPDATE ON tournaments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

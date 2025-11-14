@@ -8,7 +8,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.etl_pipeline import ETLPipeline
+from src.etl.etl_pipeline import ETLPipeline
 
 logging.basicConfig(
     level=logging.INFO,

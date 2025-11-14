@@ -8,15 +8,18 @@ To enable deck synergy and optimization analysis, we need structured card data f
 - Add `deck_cards` table to link decklists to individual cards with quantities and sections (mainboard/sideboard)
 - Add ETL process to load Scryfall bulk data (oracle_cards and rulings) into the `cards` table
 - Add decklist parsing functionality to extract cards from `decklist_text` and populate `deck_cards`
-- Enhance `ScryfallClient` to support structured bulk data processing for database insertion
+- Enhance `ScryfallClient` to transform card data for database insertion (bulk data download already exists)
 
 ## Impact
 - Affected specs: New capability `card-data-management`
 - Affected code: 
-  - `src/database/schema.sql` - Add new tables and indexes
-  - `src/database/init_db.py` - Schema initialization
-  - `src/services/scryfall_client.py` - Enhance bulk data processing
-  - `src/data/etl_pipeline.py` - Add card data loading and decklist parsing
-  - New module: `src/data/decklist_parser.py` - Parse decklist text format
-  - New module: `src/data/card_loader.py` - Load Scryfall bulk data into database
+  - `src/database/schema.sql` - Add new tables and indexes 
+  - `src/database/init_db.py` - Schema initialization (CLI script)
+  - `src/etl/api_clients/scryfall_client.py` - Add card transformation methods (bulk download already exists)
+  - `src/etl/etl_pipeline.py` - Consolidated ETL pipeline including:
+    - Card data loading (`load_cards_from_bulk_data` function)
+    - Decklist parsing (`parse_decklist` function)
+    - Tournament filtering functions (`filter_tournaments`, `filter_rounds_data`, etc.)
+    - Tournament ETL pipeline (`ETLPipeline` class)
+  - `src/etl/main.py` - CLI entry point for loading tournaments
 

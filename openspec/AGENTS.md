@@ -204,6 +204,11 @@ If multiple capabilities are affected, create multiple delta files under `change
 - [ ] 1.4 Write tests
 ```
 
+**Test Ordering Guidance:**
+- Write unit tests upfront (TDD approach) - place them at the beginning of each implementation section
+- Write integration tests after all components are implemented - place them in a dedicated section at the end, before documentation
+- This ensures components are tested in isolation first, then verified to work together
+
 5. **Create design.md when needed:**
 Create `design.md` if any of the following apply; otherwise omit it:
 - Cross-cutting change (multiple services/modules) or a new architectural pattern

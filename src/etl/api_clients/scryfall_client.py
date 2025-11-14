@@ -100,12 +100,17 @@ class ScryfallClient:
         """
         Download and parse Scryfall bulk data. Save locally to data/{data_type}/ folder.
         
+        Returns structured data ready for database insertion. The 'data' field contains
+        a list of card/ruling dictionaries that can be transformed using transform_card_to_db_row()
+        or processed directly for database operations.
+        
         Args:
             data_type: Type of bulk data to download ("oracle_cards" or "rulings")
             url: Download URL. If None, will fetch the current URL from the API.
         
         Returns:
-            Dictionary with 'data' (list of items) and 'file_path' keys, or None on error
+            Dictionary with 'data' (list of items) and 'file_path' keys, or None on error.
+            The 'data' field contains structured JSON objects ready for transformation.
         """
         import os
         import json
@@ -220,6 +225,71 @@ class ScryfallClient:
         
         logger.info(f"Joined cards with rulings successfully")
         return cards_with_rulings
+    
+    def concatenate_rulings(self, rulings: List[str]) -> str:
+        """
+        Concatenate a list of ruling comments into a comma-separated string.
+        
+        Args:
+            rulings: List of ruling comment strings
+        
+        Returns:
+            Comma-separated string of rulings, or empty string if no rulings
+        """
+        if not rulings:
+            return ""
+        # Filter out empty strings and join with commas
+        valid_rulings = [r.strip() for r in rulings if r and r.strip()]
+        return ", ".join(valid_rulings)
+    
+    def transform_card_to_db_row(self, card: Dict) -> Dict:
+        """
+        Transform a Scryfall oracle card object to database row format.
+        
+        Maps Scryfall card fields to database columns:
+        - id -> card_id
+        - set -> set
+        - collector_number -> collector_num
+        - name -> name
+        - oracle_text -> oracle_text
+        - rulings (list) -> rulings (comma-separated string)
+        - type_line -> type_line
+        - mana_cost -> mana_cost
+        - cmc -> cmc
+        - color_identity -> color_identity (array)
+        - scryfall_uri -> scryfall_uri
+        
+        Args:
+            card: Scryfall oracle card dictionary
+        
+        Returns:
+            Dictionary with database column names as keys
+        """
+        # Handle rulings - if it's a list, concatenate; if already string, use as-is
+        rulings_value = card.get("rulings", [])
+        if isinstance(rulings_value, list):
+            rulings_text = self.concatenate_rulings(rulings_value)
+        else:
+            rulings_text = str(rulings_value) if rulings_value else ""
+        
+        # Handle color_identity - ensure it's a list
+        color_identity = card.get("color_identity", [])
+        if not isinstance(color_identity, list):
+            color_identity = []
+        
+        return {
+            "card_id": card.get("id", ""),
+            "set": card.get("set"),
+            "collector_num": card.get("collector_number"),
+            "name": card.get("name", ""),
+            "oracle_text": card.get("oracle_text"),
+            "rulings": rulings_text,
+            "type_line": card.get("type_line"),
+            "mana_cost": card.get("mana_cost"),
+            "cmc": card.get("cmc"),
+            "color_identity": color_identity,
+            "scryfall_uri": card.get("scryfall_uri")
+        }
     
     def get_card_price(self, card_name: str) -> Optional[float]:
         """Get current price for a card by name"""

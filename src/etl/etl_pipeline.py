@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import execute_batch
 
-from src.services.topdeck_client import TopDeckClient
-from src.services.scryfall_client import ScryfallClient
+from src.etl.api_clients.topdeck_client import TopDeckClient
+from src.etl.api_clients.scryfall_client import ScryfallClient
 from src.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)

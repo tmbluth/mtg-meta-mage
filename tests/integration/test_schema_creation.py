@@ -2,7 +2,8 @@
 
 import pytest
 from psycopg2.extensions import connection
-from src.database.init_db import init_schema
+from src.database.connection import DatabaseConnection
+from pathlib import Path
 
 
 @pytest.mark.integration
@@ -15,7 +16,8 @@ def test_schema_creation_creates_cards_table(test_db_connection: connection):
     cursor.close()
     
     # Initialize schema
-    init_schema()
+    schema_file = Path(__file__).parent.parent.parent / 'src' / 'database' / 'schema.sql'
+    DatabaseConnection.execute_schema_file(str(schema_file))
     
     # Verify cards table exists
     cursor = test_db_connection.cursor()
@@ -41,7 +43,8 @@ def test_schema_creation_creates_deck_cards_table(test_db_connection: connection
     cursor.close()
     
     # Initialize schema
-    init_schema()
+    schema_file = Path(__file__).parent.parent.parent / 'src' / 'database' / 'schema.sql'
+    DatabaseConnection.execute_schema_file(str(schema_file))
     
     # Verify deck_cards table exists
     cursor = test_db_connection.cursor()
@@ -67,7 +70,8 @@ def test_schema_creation_creates_indexes(test_db_connection: connection):
     cursor.close()
     
     # Initialize schema
-    init_schema()
+    schema_file = Path(__file__).parent.parent.parent / 'src' / 'database' / 'schema.sql'
+    DatabaseConnection.execute_schema_file(str(schema_file))
     
     # Verify indexes exist
     cursor = test_db_connection.cursor()
@@ -101,7 +105,8 @@ def test_schema_creation_allows_card_insertion(test_db_connection: connection):
     cursor.close()
     
     # Initialize schema
-    init_schema()
+    schema_file = Path(__file__).parent.parent.parent / 'src' / 'database' / 'schema.sql'
+    DatabaseConnection.execute_schema_file(str(schema_file))
     
     # Insert a test card
     cursor = test_db_connection.cursor()
@@ -139,7 +144,8 @@ def test_schema_creation_enforces_foreign_key_constraints(test_db_connection: co
     cursor.close()
     
     # Initialize schema
-    init_schema()
+    schema_file = Path(__file__).parent.parent.parent / 'src' / 'database' / 'schema.sql'
+    DatabaseConnection.execute_schema_file(str(schema_file))
     
     # Create a test decklist
     cursor = test_db_connection.cursor()
@@ -171,7 +177,8 @@ def test_schema_creation_enforces_check_constraints(test_db_connection: connecti
     cursor.close()
     
     # Initialize schema
-    init_schema()
+    schema_file = Path(__file__).parent.parent.parent / 'src' / 'database' / 'schema.sql'
+    DatabaseConnection.execute_schema_file(str(schema_file))
     
     # Create a test decklist
     cursor = test_db_connection.cursor()

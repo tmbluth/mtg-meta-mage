@@ -34,14 +34,18 @@ def test_cards_table_has_card_id_primary_key(test_db_cursor: cursor):
     
     # Check primary key constraint
     test_db_cursor.execute("""
-        SELECT constraint_name
-        FROM information_schema.table_constraints
-        WHERE table_name = 'cards' 
-        AND constraint_type = 'PRIMARY KEY'
-        AND constraint_name LIKE '%card_id%';
+        SELECT tc.constraint_name, kcu.column_name
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+            ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_name = 'cards' 
+        AND tc.constraint_type = 'PRIMARY KEY'
+        AND kcu.column_name = 'card_id';
     """)
     pk_constraint = test_db_cursor.fetchone()
     assert pk_constraint is not None, "card_id should have primary key constraint"
+    constraint_name, column_name = pk_constraint
+    assert column_name == "card_id", "Primary key should be on card_id column"
 
 
 @pytest.mark.unit

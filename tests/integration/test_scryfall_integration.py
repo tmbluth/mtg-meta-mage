@@ -4,7 +4,7 @@ import pytest
 import os
 import time
 
-from src.services.scryfall_client import ScryfallClient
+from src.etl.api_clients.scryfall_client import ScryfallClient
 
 
 class TestScryfallIntegration:
