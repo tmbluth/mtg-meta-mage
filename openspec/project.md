@@ -91,8 +91,9 @@ Users can:
   - Endpoint: `https://api.scryfall.com`
   - No authentication required
   - Rate Limit: 50-100 requests/second
-  - Provides: Card data, prices, rulings, bulk data downloads
+  - Provides: Card data and rulings via bulk data downloads
 - **PostgreSQL Database**:
   - Tables: `tournaments`, `players`, `decklists`, `match_rounds`, `matches`, `load_metadata`
   - Connection pooling: 1-10 connections (configurable)
-  - Environment variables: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+  - Environment variables: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` in .env.
+  - Use `TEST_DB_NAME` in .env for testing database operations (make sure to clean up after)
