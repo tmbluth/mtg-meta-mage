@@ -5,7 +5,7 @@ import time
 from unittest.mock import Mock, patch, MagicMock
 import requests
 
-from src.services.topdeck_client import TopDeckClient
+from src.etl.api_clients.topdeck_client import TopDeckClient
 
 
 class TestTopDeckClientInit:
@@ -129,7 +129,7 @@ class TestRequest:
         mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError()
         
         with patch.object(client.session, 'request', return_value=mock_response):
-            with patch('src.services.topdeck_client.logger') as mock_logger:
+            with patch('src.etl.api_clients.topdeck_client.logger') as mock_logger:
                 with pytest.raises(ValueError):
                     client._request('POST', '/v2/tournaments', json={'game': 'test', 'columns': ['invalid']})
                 

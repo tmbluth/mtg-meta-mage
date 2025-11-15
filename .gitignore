@@ -1,14 +1,20 @@
 .DS_Store
 .env
-.venv
-.venv/
+
+# Python cache files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pyw
-*.pyz
-*.pywz
-*.pyzw
-*.pyzwz
-*.pyzwzw
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Cursor rules
+.cursor/
+
+src/data/

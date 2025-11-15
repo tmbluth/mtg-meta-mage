@@ -4,7 +4,7 @@ import pytest
 import os
 from dotenv import load_dotenv
 
-from src.services.topdeck_client import TopDeckClient
+from src.etl.api_clients.topdeck_client import TopDeckClient
 
 load_dotenv()
 

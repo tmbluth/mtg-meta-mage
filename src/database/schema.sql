@@ -79,6 +79,56 @@ CREATE TABLE IF NOT EXISTS load_metadata (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Cards table for storing Scryfall oracle card data
+-- This table stores canonical card information from Scryfall's oracle cards bulk data.
+-- Each card represents a unique oracle card (not a specific printing), identified by card_id.
+-- Cards are loaded via load_cards_from_bulk_data() which downloads Scryfall bulk data.
+-- Fields:
+--   card_id: Scryfall UUID for the oracle card (primary key)
+--   set: Set code for the card (e.g., 'M21', 'MH2')
+--   collector_num: Collector number within the set
+--   name: Card name (required, indexed for decklist matching)
+--   oracle_text: Rules text of the card
+--   rulings: Comma-separated list of official rulings
+--   type_line: Card type line (e.g., 'Creature — Human Wizard')
+--   mana_cost: Mana cost string (e.g., '{1}{R}')
+--   cmc: Converted mana cost (float)
+--   color_identity: Array of color identity letters (e.g., ['R', 'U'])
+--   scryfall_uri: Link to card on Scryfall
+CREATE TABLE IF NOT EXISTS cards (
+    card_id TEXT PRIMARY KEY,
+    set TEXT,
+    collector_num TEXT,
+    name TEXT NOT NULL,
+    oracle_text TEXT,
+    rulings TEXT,
+    type_line TEXT,
+    mana_cost TEXT,
+    cmc FLOAT,
+    color_identity TEXT[],
+    scryfall_uri TEXT
+);
+
+-- Deck cards junction table linking decklists to individual cards
+-- This table stores parsed card entries from decklists, linking them to the cards table.
+-- Each row represents a card in a specific decklist with its quantity and section.
+-- Cards are parsed from decklist_text using parse_decklist() and stored via parse_and_store_decklist_cards().
+-- Fields:
+--   decklist_id: Foreign key to decklists table
+--   card_id: Foreign key to cards table (matched by card name)
+--   section: Either 'mainboard' or 'sideboard' (enforced by CHECK constraint)
+--   quantity: Number of copies of this card in the section (must be > 0)
+-- Note: Cards not found in the cards table are logged but not stored.
+CREATE TABLE IF NOT EXISTS deck_cards (
+    decklist_id INTEGER NOT NULL,
+    card_id TEXT NOT NULL,
+    section TEXT NOT NULL CHECK (section IN ('mainboard', 'sideboard')),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    PRIMARY KEY (decklist_id, card_id, section),
+    FOREIGN KEY (decklist_id) REFERENCES decklists(decklist_id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(card_id) ON DELETE CASCADE
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_tournaments_format ON tournaments(format);
 CREATE INDEX IF NOT EXISTS idx_tournaments_start_date ON tournaments(start_date);
@@ -88,6 +138,14 @@ CREATE INDEX IF NOT EXISTS idx_players_standing ON players(tournament_id, standi
 CREATE INDEX IF NOT EXISTS idx_decklists_player_tournament ON decklists(player_id, tournament_id);
 CREATE INDEX IF NOT EXISTS idx_matches_tournament ON matches(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_matches_players ON matches(player1_id, player2_id);
+
+-- Indexes for cards table
+CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);
+CREATE INDEX IF NOT EXISTS idx_cards_color_identity ON cards USING GIN(color_identity);
+
+-- Indexes for deck_cards table
+CREATE INDEX IF NOT EXISTS idx_deck_cards_decklist_id ON deck_cards(decklist_id);
+CREATE INDEX IF NOT EXISTS idx_deck_cards_card_id ON deck_cards(card_id);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -99,6 +157,7 @@ END;
 $$ language 'plpgsql';
 
 -- Trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS update_tournaments_updated_at ON tournaments;
 CREATE TRIGGER update_tournaments_updated_at BEFORE UPDATE ON tournaments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

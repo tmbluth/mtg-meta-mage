@@ -3,8 +3,41 @@
 import pytest
 import os
 import time
+import signal
+from contextlib import contextmanager
+from psycopg2.extensions import connection
 
-from src.services.scryfall_client import ScryfallClient
+from src.etl.api_clients.scryfall_client import ScryfallClient
+from src.etl.etl_pipeline import load_cards_from_bulk_data
+from src.database.connection import DatabaseConnection
+
+
+class TimeoutError(Exception):
+    """Custom timeout exception"""
+    pass
+
+
+@contextmanager
+def timeout(seconds):
+    """Context manager for timeout using SIGALRM (Unix/macOS only)"""
+    # Only use SIGALRM on Unix-like systems
+    if not hasattr(signal, 'SIGALRM'):
+        # On Windows or systems without SIGALRM, skip timeout
+        yield
+        return
+    
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Operation timed out after {seconds} seconds")
+    
+    # Set up signal handler
+    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(seconds)
+    
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 
 class TestScryfallIntegration:
@@ -146,4 +179,162 @@ class TestScryfallIntegration:
         
         # Should return None if card not found or has no price
         assert price is None or isinstance(price, float), "Price should be None or float"
+    
+    @pytest.mark.integration
+    def test_download_oracle_cards_bulk_data(self, client):
+        """Test downloading oracle cards bulk data"""
+        result = client.download_oracle_cards()
+        
+        assert result is not None, "Bulk data download should succeed"
+        assert 'data' in result, "Result should contain 'data' key"
+        assert isinstance(result['data'], list), "Data should be a list"
+        assert len(result['data']) > 0, "Should have at least one card"
+        
+        # Verify card structure
+        first_card = result['data'][0]
+        assert 'id' in first_card, "Card should have 'id' field"
+        assert 'name' in first_card, "Card should have 'name' field"
+        assert 'oracle_id' in first_card, "Card should have 'oracle_id' field"
+    
+    @pytest.mark.integration
+    def test_download_rulings_bulk_data(self, client):
+        """Test downloading rulings bulk data"""
+        result = client.download_rulings()
+        
+        assert result is not None, "Rulings bulk data download should succeed"
+        assert 'data' in result, "Result should contain 'data' key"
+        assert isinstance(result['data'], list), "Data should be a list"
+        
+        # Rulings may be empty, but structure should be correct
+        if len(result['data']) > 0:
+            first_ruling = result['data'][0]
+            assert 'oracle_id' in first_ruling, "Ruling should have 'oracle_id' field"
+    
+    @pytest.mark.integration
+    def test_transform_card_to_db_row(self, client):
+        """Test transforming Scryfall card to database row format"""
+        # Get a real card
+        card = client.get_card_by_name('Lightning Bolt')
+        assert card is not None, "Should fetch Lightning Bolt"
+        
+        # Transform to DB row format
+        db_row = client.transform_card_to_db_row(card)
+        
+        # Verify required fields
+        assert 'card_id' in db_row, "DB row should have card_id"
+        assert 'name' in db_row, "DB row should have name"
+        assert db_row['name'] == 'Lightning Bolt', "Name should match"
+        
+        # Verify optional fields are present (may be None)
+        assert 'oracle_text' in db_row, "DB row should have oracle_text field"
+        assert 'type_line' in db_row, "DB row should have type_line field"
+        assert 'mana_cost' in db_row, "DB row should have mana_cost field"
+        assert 'cmc' in db_row, "DB row should have cmc field"
+        assert 'color_identity' in db_row, "DB row should have color_identity field"
+        assert isinstance(db_row['color_identity'], list), "color_identity should be a list"
+    
+    @pytest.mark.integration
+    def test_load_cards_from_bulk_data_into_database(self, test_db_connection: connection):
+        """Test loading cards from Scryfall bulk data into database"""
+        # Ensure database connection pool is initialized
+        DatabaseConnection.initialize_pool()
+        
+        # Clear existing cards to test fresh load
+        cursor = test_db_connection.cursor()
+        cursor.execute("DELETE FROM deck_cards;")
+        cursor.execute("DELETE FROM cards;")
+        test_db_connection.commit()
+        cursor.close()
+        
+        # Load cards from bulk data with timeout (5 minutes max for download + processing)
+        # This test downloads real Scryfall bulk data which can be large
+        try:
+            with timeout(300):  # 5 minute timeout
+                result = load_cards_from_bulk_data(batch_size=100)
+        except TimeoutError as e:
+            pytest.skip(f"Test timed out: {e}. Scryfall bulk data download may be slow.")
+        except Exception as e:
+            pytest.fail(f"Failed to load cards from bulk data: {e}")
+        
+        # Verify result structure
+        assert 'cards_loaded' in result, "Result should have cards_loaded"
+        assert 'cards_processed' in result, "Result should have cards_processed"
+        assert 'errors' in result, "Result should have errors"
+        
+        # Should have loaded some cards
+        assert result['cards_loaded'] > 0, f"Should have loaded at least some cards, got {result['cards_loaded']}"
+        assert result['cards_processed'] > 0, f"Should have processed at least some cards, got {result['cards_processed']}"
+        
+        # Verify cards are in database
+        cursor = test_db_connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM cards;")
+        card_count = cursor.fetchone()[0]
+        cursor.close()
+        
+        assert card_count > 0, f"Should have cards in database, got {card_count}"
+        assert card_count == result['cards_loaded'], f"Card count should match loaded count: {card_count} != {result['cards_loaded']}"
+        
+        # Verify a specific card exists (Lightning Bolt should be in bulk data)
+        cursor = test_db_connection.cursor()
+        cursor.execute("SELECT name, oracle_text, type_line FROM cards WHERE name = 'Lightning Bolt' LIMIT 1;")
+        card = cursor.fetchone()
+        cursor.close()
+        
+        if card:
+            assert card[0] == 'Lightning Bolt', "Card name should match"
+            assert card[2] is not None, "Card should have type_line"
+    
+    @pytest.mark.integration
+    def test_load_cards_upsert_logic(self, test_db_connection: connection):
+        """Test that loading cards again uses upsert logic (updates existing)"""
+        # Ensure database connection pool is initialized
+        DatabaseConnection.initialize_pool()
+        
+        # Clear existing cards
+        cursor = test_db_connection.cursor()
+        cursor.execute("DELETE FROM deck_cards;")
+        cursor.execute("DELETE FROM cards;")
+        test_db_connection.commit()
+        cursor.close()
+        
+        # Load cards first time with timeout
+        try:
+            with timeout(300):  # 5 minute timeout
+                result1 = load_cards_from_bulk_data(batch_size=100)
+        except TimeoutError as e:
+            pytest.skip(f"Test timed out on first load: {e}. Scryfall bulk data download may be slow.")
+        except Exception as e:
+            pytest.fail(f"Failed to load cards first time: {e}")
+        
+        first_load_count = result1['cards_loaded']
+        assert first_load_count > 0, f"First load should succeed, got {first_load_count}"
+        
+        # Get count after first load
+        cursor = test_db_connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM cards;")
+        count_after_first = cursor.fetchone()[0]
+        cursor.close()
+        
+        assert count_after_first == first_load_count, f"Count should match first load: {count_after_first} != {first_load_count}"
+        
+        # Load cards again (should update, not duplicate) with timeout
+        try:
+            with timeout(300):  # 5 minute timeout
+                result2 = load_cards_from_bulk_data(batch_size=100)
+        except TimeoutError as e:
+            pytest.skip(f"Test timed out on second load: {e}. Scryfall bulk data download may be slow.")
+        except Exception as e:
+            pytest.fail(f"Failed to load cards second time: {e}")
+        
+        second_load_count = result2['cards_loaded']
+        
+        # Get count after second load
+        cursor = test_db_connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM cards;")
+        count_after_second = cursor.fetchone()[0]
+        cursor.close()
+        
+        # Should have same or similar count (upsert, not insert)
+        assert count_after_second == count_after_first, f"Should not have duplicates after upsert: {count_after_second} != {count_after_first}"
+        assert second_load_count > 0, f"Second load should process cards, got {second_load_count}"
 
