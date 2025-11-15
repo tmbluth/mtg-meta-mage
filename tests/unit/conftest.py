@@ -4,6 +4,7 @@ import pytest
 import os
 from dotenv import load_dotenv
 from psycopg2.extensions import connection, cursor
+from unittest.mock import Mock, MagicMock, patch
 
 load_dotenv()
 
@@ -88,4 +89,51 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "unit: mark test as unit test (no external dependencies)"
     )
+
+
+# ETL Pipeline Test Fixtures
+
+@pytest.fixture
+def mock_pipeline():
+    """Fixture that creates an ETLPipeline with mocked dependencies"""
+    from src.etl.etl_pipeline import ETLPipeline
+    
+    with patch('src.etl.etl_pipeline.TopDeckClient') as mock_client_class:
+        with patch('src.etl.etl_pipeline.DatabaseConnection.initialize_pool'):
+            mock_client = Mock()
+            mock_client_class.return_value = mock_client
+            pipeline = ETLPipeline(api_key="test_key")
+            pipeline.client = mock_client
+            yield pipeline, mock_client
+
+
+@pytest.fixture
+def mock_db_connection():
+    """Fixture for mock database connection and cursor"""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+    return mock_conn, mock_cursor
+
+
+@pytest.fixture
+def mock_db_transaction():
+    """Fixture for mock database transaction context manager"""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+    
+    with patch('src.etl.etl_pipeline.DatabaseConnection.transaction') as mock_transaction:
+        mock_transaction.return_value.__enter__.return_value = mock_conn
+        mock_transaction.return_value.__exit__.return_value = None
+        yield mock_conn, mock_cursor, mock_transaction
+
+
+@pytest.fixture
+def mock_scryfall_client():
+    """Fixture for mock Scryfall client"""
+    with patch('src.etl.etl_pipeline.ScryfallClient') as mock_client_class:
+        mock_client = Mock()
+        mock_client_class.return_value = mock_client
+        yield mock_client
 

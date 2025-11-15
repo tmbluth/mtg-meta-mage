@@ -56,11 +56,13 @@ def parse_decklist(decklist_text: str) -> List[Dict[str, any]]:
         Section is either "mainboard" or "sideboard"
     """
     if not decklist_text or not decklist_text.strip():
+        logger.debug("Empty decklist text provided to parse_decklist")
         return []
     
     cards = []
     current_section = "mainboard"
     lines = decklist_text.split('\n')
+    logger.debug(f"Parsing decklist with {len(lines)} lines")
     
     # Patterns for sideboard detection
     sideboard_only_patterns = [
@@ -126,6 +128,10 @@ def parse_decklist(decklist_text: str) -> List[Dict[str, any]]:
         else:
             # Log malformed entries but continue processing
             logger.debug(f"Skipping malformed decklist line: {line}")
+    
+    mainboard_count = sum(1 for c in cards if c['section'] == 'mainboard')
+    sideboard_count = sum(1 for c in cards if c['section'] == 'sideboard')
+    logger.debug(f"Parsed decklist: {len(cards)} total cards ({mainboard_count} mainboard, {sideboard_count} sideboard)")
     
     return cards
 

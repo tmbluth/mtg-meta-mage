@@ -124,7 +124,8 @@ class ScryfallClient:
         
         try:
             logger.info(f"Downloading {data_type} from {url}")
-            response = requests.get(url, stream=True)
+            # Add timeout to prevent hanging (30 seconds connect, 300 seconds read for large files)
+            response = requests.get(url, stream=True, timeout=(30, 300))
             response.raise_for_status()
             
             # Parse JSON data
@@ -265,23 +266,35 @@ class ScryfallClient:
         Returns:
             Dictionary with database column names as keys
         """
+        card_id = card.get("id", "")
+        card_name = card.get("name", "unknown")
+        
         # Handle rulings - if it's a list, concatenate; if already string, use as-is
         rulings_value = card.get("rulings", [])
         if isinstance(rulings_value, list):
             rulings_text = self.concatenate_rulings(rulings_value)
+            if len(rulings_value) > 0:
+                logger.debug(f"Transforming card {card_name} ({card_id}) with {len(rulings_value)} rulings")
         else:
             rulings_text = str(rulings_value) if rulings_value else ""
         
         # Handle color_identity - ensure it's a list
         color_identity = card.get("color_identity", [])
         if not isinstance(color_identity, list):
+            logger.warning(f"Card {card_name} ({card_id}) has non-list color_identity: {color_identity}, converting to empty list")
             color_identity = []
         
+        # Warn if card_id or name is missing
+        if not card_id:
+            logger.warning(f"Card {card_name} missing card_id (id field)")
+        if not card_name or card_name == "unknown":
+            logger.warning(f"Card with id {card_id} missing name field")
+        
         return {
-            "card_id": card.get("id", ""),
+            "card_id": card_id,
             "set": card.get("set"),
             "collector_num": card.get("collector_number"),
-            "name": card.get("name", ""),
+            "name": card_name,
             "oracle_text": card.get("oracle_text"),
             "rulings": rulings_text,
             "type_line": card.get("type_line"),

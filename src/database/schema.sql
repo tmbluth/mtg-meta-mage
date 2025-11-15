@@ -80,6 +80,21 @@ CREATE TABLE IF NOT EXISTS load_metadata (
 );
 
 -- Cards table for storing Scryfall oracle card data
+-- This table stores canonical card information from Scryfall's oracle cards bulk data.
+-- Each card represents a unique oracle card (not a specific printing), identified by card_id.
+-- Cards are loaded via load_cards_from_bulk_data() which downloads Scryfall bulk data.
+-- Fields:
+--   card_id: Scryfall UUID for the oracle card (primary key)
+--   set: Set code for the card (e.g., 'M21', 'MH2')
+--   collector_num: Collector number within the set
+--   name: Card name (required, indexed for decklist matching)
+--   oracle_text: Rules text of the card
+--   rulings: Comma-separated list of official rulings
+--   type_line: Card type line (e.g., 'Creature — Human Wizard')
+--   mana_cost: Mana cost string (e.g., '{1}{R}')
+--   cmc: Converted mana cost (float)
+--   color_identity: Array of color identity letters (e.g., ['R', 'U'])
+--   scryfall_uri: Link to card on Scryfall
 CREATE TABLE IF NOT EXISTS cards (
     card_id TEXT PRIMARY KEY,
     set TEXT,
@@ -95,6 +110,15 @@ CREATE TABLE IF NOT EXISTS cards (
 );
 
 -- Deck cards junction table linking decklists to individual cards
+-- This table stores parsed card entries from decklists, linking them to the cards table.
+-- Each row represents a card in a specific decklist with its quantity and section.
+-- Cards are parsed from decklist_text using parse_decklist() and stored via parse_and_store_decklist_cards().
+-- Fields:
+--   decklist_id: Foreign key to decklists table
+--   card_id: Foreign key to cards table (matched by card name)
+--   section: Either 'mainboard' or 'sideboard' (enforced by CHECK constraint)
+--   quantity: Number of copies of this card in the section (must be > 0)
+-- Note: Cards not found in the cards table are logged but not stored.
 CREATE TABLE IF NOT EXISTS deck_cards (
     decklist_id INTEGER NOT NULL,
     card_id TEXT NOT NULL,

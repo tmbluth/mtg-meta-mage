@@ -42,16 +42,15 @@
 - [x] 6.4 Add comprehensive logging for card data operations
 
 ## 7. Integration Tests
-- [ ] 7.1 Write integration tests for schema creation
-- [ ] 7.2 Write integration tests for Scryfall bulk data download and parsing
-- [ ] 7.3 Write integration tests with real decklist examples
-- [ ] 7.4 Write integration tests for full card data loading pipeline
-- [ ] 7.5 Write integration tests for end-to-end decklist processing
-- [ ] 7.6 Write integration tests for error recovery scenarios
+- [x] 7.1 Write integration tests for schema creation in `test_schema_creation.py`
+- [x] 7.2 Write integration tests for Scryfall bulk data download, parsing and loading in `test_scryfall_integration.py`
+- [x] 7.3 Write integration tests for end-to-end decklist processing for both Topdeck and Scryfall data
 
 ## 8. Documentation
-- [ ] 8.1 Update README.md with card data tables documentation
-- [ ] 8.2 Update schema.sql comments with table descriptions
-- [ ] 8.3 Document decklist format expectations
-- [ ] 8.4 Document Scryfall bulk data update frequency recommendations
+- [x] 8.1 Write good logging in all the new app functionality developed in this task list
+- [x] 8.2 Scan codebase and align documentation with code
+- [x] 8.3 Update README.md with card data tables documentation
+- [x] 8.4 Update schema.sql comments with table descriptions
+- [x] 8.5 Document Scryfall bulk data update frequency recommendations
+
 
