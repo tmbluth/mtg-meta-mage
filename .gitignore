@@ -16,3 +16,5 @@ env/
 
 # Cursor rules
 .cursor/
+
+src/data/
