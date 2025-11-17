@@ -437,22 +437,22 @@ class ETLPipeline:
             logger.error(f"Error getting last load timestamp: {e}")
             return None
     
-    def update_load_metadata(self, last_timestamp: int, tournaments_loaded: int) -> None:
+    def update_load_metadata(self, last_timestamp: int, count_loaded: int) -> None:
         """
         Update load metadata after successful load
         
         Args:
             last_timestamp: Unix timestamp of the latest tournament loaded
-            tournaments_loaded: Number of tournaments loaded in this batch
+            count_loaded: Number of tournaments loaded in this batch
         """
         try:
             with DatabaseConnection.get_cursor(commit=True) as cur:
                 cur.execute(
                     """
-                    INSERT INTO load_metadata (last_load_timestamp, tournaments_loaded, load_type)
+                    INSERT INTO load_metadata (last_load_timestamp, count_loaded, load_type)
                     VALUES (%s, %s, %s)
                     """,
-                    (last_timestamp, tournaments_loaded, 'incremental')
+                    (last_timestamp, count_loaded, 'incremental')
                 )
         except Exception as e:
             logger.error(f"Error updating load metadata: {e}")

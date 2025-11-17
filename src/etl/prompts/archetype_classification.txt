@@ -1,0 +1,7 @@
+Analyze the mainboard cards and identify: 
+1) main_title (key cards/themes), 
+2) color_identity (e.g. '{B,G}' == 'golgari', '{W,U,R}' == 'jeskai'), 
+3) strategy (aggro/midrange/control/ramp/combo), 
+4) confidence (0-1). Respond in JSON format. 
+
+For the main_title use common naming conventions in the community (e.g. if you see Urza's Tower assume the deck can be called Tron)
