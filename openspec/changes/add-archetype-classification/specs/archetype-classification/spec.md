@@ -95,14 +95,15 @@ The system SHALL use LLM APIs to classify decklists into archetypes based on mai
 - **AND** records the `classified_at` timestamp
 
 ### Requirement: Archetype Classification Pipeline
-The system SHALL provide an independent ETL pipeline for archetype classification that runs after tournament and card data loads.
+The system SHALL provide an independent ETL pipeline for archetype classification that runs after tournament and card data loads, following the `BasePipeline` abstract class pattern.
 
 #### Scenario: Incremental Classification Mode
 - **WHEN** the archetype classification pipeline runs in incremental mode
-- **THEN** the system queries the last archetype classification timestamp from `load_metadata`
+- **THEN** the system queries the last archetype classification timestamp from `load_metadata` using `get_last_load_timestamp('archetypes')`
 - **AND** retrieves all decklists from tournaments with `start_date >= last_timestamp`
 - **AND** classifies each new or updated decklist in batches
-- **AND** updates the load timestamp in `load_metadata` table
+- **AND** updates the load timestamp in `load_metadata` table using `update_load_metadata(data_type='archetypes')`
+- **AND** returns a standardized result dictionary with keys: `success` (bool), `objects_loaded` (int), `objects_processed` (int), `errors` (int)
 
 #### Scenario: Run Initial Archetype Classification
 - **WHEN** the archetype classification pipeline runs with `--mode initial` flag
@@ -112,6 +113,7 @@ The system SHALL provide an independent ETL pipeline for archetype classificatio
 - **AND** preserves previous archetype rows for historical tracking
 - **AND** logs progress and completion stats (X/Y decks classified, success/failure counts)
 - **AND** records the load timestamp in `load_metadata` table
+- **AND** returns a standardized result dictionary with keys: `success` (bool), `objects_loaded` (int), `objects_processed` (int), `errors` (int)
 
 #### Scenario: Batch Processing
 - **WHEN** the archetype classification pipeline processes decklists
@@ -140,21 +142,22 @@ The system SHALL provide CLI commands for archetype classification with mode and
 - **AND** commits each batch to the database upon completion
 
 ### Requirement: Load Metadata Tracking for Archetypes
-The system SHALL track archetype classification loads in the `load_metadata` table to enable incremental processing.
+The system SHALL track archetype classification loads in the `load_metadata` table to enable incremental processing using the existing `data_type` field.
 
 #### Scenario: Record Archetype Load Timestamp
 - **WHEN** an archetype classification pipeline run completes successfully
 - **THEN** the system inserts a new row into `load_metadata` with:
   - `last_load_timestamp`: Unix timestamp of the latest tournament processed
   - `load_type`: "incremental" or "initial"
-  - `load_subtype`: "archetypes" (distinguishes from tournament/card loads)
-  - `count_loaded`: Count of tournaments or cards depending on the load_subtype
+  - `data_type`: "archetypes" (distinguishes from tournament/card loads)
+  - `objects_loaded`: Count of decklists classified in this batch
 - **AND** the load timestamp is used for future incremental runs
+- **AND** uses `update_load_metadata()` utility function from `src/etl/utils.py`
 
 #### Scenario: Query Last Archetype Load Timestamp
 - **WHEN** the archetype classification pipeline runs in incremental mode
-- **THEN** the system queries `load_metadata` for the most recent row with `load_subtype='archetypes'`
-- **AND** retrieves the `last_load_timestamp` value
+- **THEN** the system queries `load_metadata` for the most recent row with `data_type='archetypes'`
+- **AND** retrieves the `last_load_timestamp` value using `get_last_load_timestamp('archetypes')` from `src/etl/utils.py`
 - **AND** uses this timestamp to filter tournaments for incremental classification
 
 ### Requirement: Confidence-Based Filtering

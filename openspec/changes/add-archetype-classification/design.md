@@ -85,19 +85,23 @@ ALTER TABLE decklists ADD COLUMN archetype_id INTEGER REFERENCES archetypes(arch
 - Separate archetype dictionary table - rejected as premature optimization
 
 ### Decision 3: ETL Pipeline Independence
-**What:** Archetype classification runs as a separate ETL step after tournament and card data loads.
+**What:** Archetype classification runs as a separate ETL step after tournament and card data loads, following the `BasePipeline` pattern.
 
 **Why:**
 - Clean separation of concerns (data ingestion vs. enrichment)
 - Allows tournament and card loads to complete without LLM dependencies
 - Enables reclassification without re-ingesting source data
 - Supports batch processing with configurable time windows
+- Follows existing ETL patterns (`TournamentsPipeline`, `CardsPipeline`)
 
 **Implementation:**
+- New `ArchetypeClassificationPipeline` class extending `BasePipeline`
+- Implements `load_initial()` and `load_incremental()` methods with standardized return format
 - New CLI command: `python -m src.etl.main --data-type archetypes --mode [initial|incremental]`
 - Initial mode: Classify all decklists (including previously classified ones, creating new archetype rows)
 - Incremental mode: Classify decks from tournaments since last archetype load
-- Uses `load_metadata` table to track last archetype classification timestamp
+- Uses `load_metadata` table with `data_type='archetypes'` to track classification timestamps
+- Leverages shared utility functions from `src/etl/utils.py` (`update_load_metadata`, `get_last_load_timestamp`)
 
 **Alternatives Considered:**
 - Inline classification during tournament load - rejected due to complexity and failure isolation
@@ -205,9 +209,10 @@ decklists.decklist_id → deck_cards (section='mainboard') → cards → LLM pro
 
 ### Phase 2: ETL Implementation
 1. Implement LLM client abstraction using strands-agents classes
-2. Create archetype classification pipeline (query decks, enrich cards, classify)
-3. Add CLI command for archetype classification
-4. Implement initial and incremental load modes
+2. Create `ArchetypeClassificationPipeline` extending `BasePipeline` (query decks, enrich cards, classify)
+3. Implement `load_initial()` and `load_incremental()` with standardized return format
+4. Add CLI command for archetype classification in `main.py`
+5. Use shared utility functions from `src/etl/utils.py` for metadata tracking
 
 ### Phase 3: Testing
 1. Unit tests for prompt generation, response parsing, confidence scoring

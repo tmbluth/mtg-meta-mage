@@ -19,15 +19,17 @@
 ## 3. Archetype Classification Pipeline
 - [ ] 3.1 Write unit tests for classification logic with mocked LLM responses
 - [ ] 3.2 Write unit tests for database query methods with test fixtures
-- [ ] 3.3 Create `src/etl/archetype_pipeline.py` with `ArchetypeClassificationPipeline` class
+- [ ] 3.3 Create `src/etl/archetype_pipeline.py` with `ArchetypeClassificationPipeline` class extending `BasePipeline`
 - [ ] 3.4 Implement `get_unclassified_decklists()` method (query decklists without archetype_id)
 - [ ] 3.5 Implement `get_decklist_mainboard_cards()` method (join deck_cards + cards for mainboard)
 - [ ] 3.6 Implement `classify_decklist()` method (call LLM, parse response, store archetype)
 - [ ] 3.7 Implement `update_decklist_archetype()` method (update decklists.archetype_id to latest)
-- [ ] 3.8 Implement `classify_initial()` method (classify all unclassified or classified decks)
-- [ ] 3.9 Implement `classify_incremental()` method (classify decks from tournaments since last classification)
+- [ ] 3.8 Implement `load_initial()` method following BasePipeline interface (classify all unclassified or classified decks, return standardized result dict)
+- [ ] 3.9 Implement `load_incremental()` method following BasePipeline interface (classify decks from tournaments since last classification, return standardized result dict)
 - [ ] 3.10 Add batch processing with configurable batch size
 - [ ] 3.11 Add progress logging (X/Y decks classified, success/failure counts)
+- [ ] 3.12 Use `update_load_metadata()` from `src/etl/utils.py` with `data_type='archetypes'`
+- [ ] 3.13 Use `get_last_load_timestamp()` from `src/etl/utils.py` with `data_type='archetypes'`
 
 ## 4. CLI Integration
 - [ ] 4.1 Add `archetypes` option to `--data-type` argument in `src/etl/main.py`
@@ -44,11 +46,11 @@
 - [ ] 5.6 Write unit tests for prompt versioning and template rendering
 
 ## 6. Load Metadata Tracking
-- [ ] 6.1 Add `load_subtype` field to `load_metadata` table (distinguish tournament/card/archetype loads)
-- [ ] 6.2 Use `load_subtype` field where needed in repo
-- [ ] 6.3 Update archetype pipeline to record classification timestamps in `load_metadata`
-- [ ] 6.4 Implement `get_last_archetype_load_timestamp()` method
-- [ ] 6.5 Write unit tests for load metadata tracking
+- [ ] 6.1 Verify `load_metadata` table has `data_type` field (already exists in main)
+- [ ] 6.2 Use `data_type='archetypes'` for archetype classification loads
+- [ ] 6.3 Update archetype pipeline to record classification timestamps using `update_load_metadata(data_type='archetypes')`
+- [ ] 6.4 Use existing `get_last_load_timestamp('archetypes')` from `src/etl/utils.py`
+- [ ] 6.5 Write unit tests for load metadata tracking with archetype data type
 
 ## 7. Error Handling & Edge Cases
 - [ ] 7.1 Handle decks with >10% missing card data (log error, set confidence=0)

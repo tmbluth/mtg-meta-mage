@@ -5,10 +5,11 @@ MTG Meta Mage needs to automatically classify decklists into archetypes (e.g., "
 
 ## What Changes
 - Add `archetypes` table to store deck classifications with metadata (format, main_title, color_identity, strategy, confidence, LLM model, prompt_id, timestamp)
-- Create independent archetype ETL pipeline that runs after tournament/card data loads
+- Create `ArchetypeClassificationPipeline` class extending `BasePipeline` for independent ETL that runs after tournament/card data loads
 - Implement LLM-based classification logic that analyzes mainboard cards and their attributes (name, oracle_text, type_line, mana_cost, cmc, color_identity)
-- Add CLI command for archetype classification with modes (initial/incremental) and time window parameters
+- Add CLI command for archetype classification with modes (initial/incremental) following existing ETL patterns
 - Link archetypes to decklists with support for multiple classifications per deck (decklists use latest archetype_id)
+- Use existing `load_metadata` table with `data_type='archetypes'` for tracking classification loads
 - **BREAKING**: Modify `decklists` table to add `archetype_id` foreign key field
 
 ## Impact
