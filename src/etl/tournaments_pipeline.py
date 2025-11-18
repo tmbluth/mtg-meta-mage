@@ -51,46 +51,6 @@ class TournamentsPipeline(BasePipeline):
     
     def is_commander_format(self, format_name: str) -> bool:
         """
-<<<<<<< HEAD:src/etl/etl_pipeline.py
-        Get the timestamp of the last successful load
-        
-        Returns:
-            Unix timestamp of last load, or None if no previous load
-        """
-        try:
-            with DatabaseConnection.get_cursor() as cur:
-                cur.execute(
-                    "SELECT last_load_timestamp FROM load_metadata ORDER BY id DESC LIMIT 1"
-                )
-                result = cur.fetchone()
-                if result:
-                    return result[0]
-                return None
-        except Exception as e:
-            logger.error(f"Error getting last load timestamp: {e}")
-            return None
-    
-    def update_load_metadata(self, last_timestamp: int, count_loaded: int) -> None:
-        """
-        Update load metadata after successful load
-        
-        Args:
-            last_timestamp: Unix timestamp of the latest tournament loaded
-            count_loaded: Number of tournaments loaded in this batch
-        """
-        try:
-            with DatabaseConnection.get_cursor(commit=True) as cur:
-                cur.execute(
-                    """
-                    INSERT INTO load_metadata (last_load_timestamp, count_loaded, load_type)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (last_timestamp, count_loaded, 'incremental')
-                )
-        except Exception as e:
-            logger.error(f"Error updating load metadata: {e}")
-            raise
-=======
         Check if a format is a Commander format
         
         Args:
@@ -209,7 +169,6 @@ class TournamentsPipeline(BasePipeline):
         
         return filtered_rounds
     
->>>>>>> origin/main:src/etl/tournaments_pipeline.py
     
     def insert_tournament(self, tournament: Dict, conn) -> None:
         """

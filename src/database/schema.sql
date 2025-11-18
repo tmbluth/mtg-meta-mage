@@ -75,13 +75,8 @@ CREATE TABLE IF NOT EXISTS load_metadata (
     last_load_timestamp INTEGER NOT NULL,
     last_load_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     load_type TEXT NOT NULL DEFAULT 'incremental',
-<<<<<<< HEAD
-    load_subtype TEXT NOT NULL DEFAULT 'tournaments',
-    count_loaded INTEGER DEFAULT 0,
-=======
     data_type TEXT NOT NULL,
     objects_loaded INTEGER DEFAULT 0,
->>>>>>> origin/main
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
