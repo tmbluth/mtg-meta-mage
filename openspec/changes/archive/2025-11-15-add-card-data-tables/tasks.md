@@ -18,21 +18,21 @@
 - [x] 3.1 Review unit tests for parsing standard MTG decklist format (quantity + card name)
 - [x] 3.2 Review unit tests for identifying mainboard vs sideboard sections
 - [x] 3.3 Review unit tests for handling edge cases (empty decklists, malformed entries, special characters)
-- [x] 3.4 Add `parse_decklist` function to `src/etl/etl_pipeline.py`
+- [x] 3.4 Add `parse_decklist` function to `src/etl/utils.py`
 - [x] 3.5 Implement mainboard/sideboard detection logic
 
 ## 4. Card Data Loader
 - [x] 4.1 Review unit tests for loading cards from Scryfall bulk data into database
 - [x] 4.2 Review unit tests for handling duplicate cards (upsert logic)
 - [x] 4.3 Review unit tests for joining and storing rulings
-- [x] 4.4 Add `load_cards_from_bulk_data` function to `src/etl/etl_pipeline.py`
+- [x] 4.4 Add `insert_cards` method to `CardsPipeline` class in `src/etl/cards_pipeline.py`
 - [x] 4.5 Implement batch insertion with error handling
 
 ## 5. Deck Cards ETL
 - [x] 5.1 Write unit tests for extracting cards from decklist_text and matching to cards table
 - [x] 5.2 Write unit tests for handling cards not found in cards table (logging/mapping)
 - [x] 5.3 Write unit tests for populating deck_cards table with quantities and sections
-- [x] 5.4 Add `parse_and_store_decklist_cards` method to ETLPipeline
+- [x] 5.4 Add `insert_deck_cards` method to `TournamentsPipeline` class in `src/etl/tournaments_pipeline.py`
 - [x] 5.5 Integrate decklist parsing into existing ETL pipeline
 
 ## 6. Validation and Error Handling
@@ -42,9 +42,9 @@
 - [x] 6.4 Add comprehensive logging for card data operations
 
 ## 7. Integration Tests
-- [x] 7.1 Write integration tests for schema creation in `test_schema_creation.py`
-- [x] 7.2 Write integration tests for Scryfall bulk data download, parsing and loading in `test_scryfall_integration.py`
-- [x] 7.3 Write integration tests for end-to-end decklist processing for both Topdeck and Scryfall data
+- [x] 7.1 Write integration tests for schema creation (in `test_e2e_cards.py` and `test_e2e_tournaments.py`)
+- [x] 7.2 Write integration tests for Scryfall bulk data download, parsing and loading in `test_e2e_cards.py`
+- [x] 7.3 Write integration tests for end-to-end decklist processing for both Topdeck and Scryfall data in `test_e2e_tournaments.py`
 
 ## 8. Documentation
 - [x] 8.1 Write good logging in all the new app functionality developed in this task list

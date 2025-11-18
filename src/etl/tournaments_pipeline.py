@@ -1,16 +1,14 @@
-"""ETL pipeline for loading TopDeck tournament data and Scryfall card data into PostgreSQL"""
+"""ETL pipeline for loading TopDeck tournament data into PostgreSQL"""
 
-import re
 import time
 import logging
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
-import psycopg2
+from typing import Dict, List, Optional, Any
 from psycopg2.extras import execute_batch
 
 from src.etl.api_clients.topdeck_client import TopDeckClient
-from src.etl.api_clients.scryfall_client import ScryfallClient
 from src.database.connection import DatabaseConnection
+from src.etl.utils import parse_decklist, get_last_load_timestamp, update_load_metadata, find_fuzzy_card_match
+from src.etl.base_pipeline import BasePipeline
 
 logger = logging.getLogger(__name__)
 
@@ -38,378 +36,12 @@ LIMITED_FORMATS = {
 }
 
 
-def parse_decklist(decklist_text: str) -> List[Dict[str, any]]:
-    """
-    Parse a standard MTG decklist text format to extract card quantities and names.
-    
-    Expected format: "4 Lightning Bolt" (quantity + card name)
-    Supports mainboard/sideboard sections separated by:
-    - "Sideboard" or "Sideboard:"
-    - "SB:" prefix
-    - "// Sideboard" comment
-    
-    Args:
-        decklist_text: Raw decklist text string
-    
-    Returns:
-        List of dictionaries with keys: quantity (int), card_name (str), section (str)
-        Section is either "mainboard" or "sideboard"
-    """
-    if not decklist_text or not decklist_text.strip():
-        logger.debug("Empty decklist text provided to parse_decklist")
-        return []
-    
-    cards = []
-    current_section = "mainboard"
-    lines = decklist_text.split('\n')
-    logger.debug(f"Parsing decklist with {len(lines)} lines")
-    
-    # Patterns for sideboard detection
-    sideboard_only_patterns = [
-        re.compile(r'^\s*sideboard\s*:?\s*$', re.IGNORECASE),
-        re.compile(r'^\s*//\s*sideboard\s*$', re.IGNORECASE),
-    ]
-    
-    # Pattern for SB: prefix that may have card after it
-    sb_prefix_pattern = re.compile(r'^\s*sb\s*:\s*(.*)$', re.IGNORECASE)
-    
-    # Pattern for card line: quantity (1+ digits) followed by whitespace and card name
-    card_pattern = re.compile(r'^(\d+)\s+(.+)$')
-    
-    for line in lines:
-        line = line.strip()
-        
-        # Skip empty lines
-        if not line:
-            continue
-        
-        # Check for SB: prefix (may have card on same line)
-        sb_match = sb_prefix_pattern.match(line)
-        if sb_match:
-            current_section = "sideboard"
-            # If there's content after SB:, process it as a card line
-            remaining = sb_match.group(1).strip()
-            if remaining:
-                line = remaining
-            else:
-                continue
-        
-        # Check for sideboard-only separators (standalone)
-        is_sideboard_separator = False
-        for pattern in sideboard_only_patterns:
-            if pattern.match(line):
-                current_section = "sideboard"
-                is_sideboard_separator = True
-                break
-        
-        if is_sideboard_separator:
-            continue
-        
-        # Skip comment lines (starting with // or #)
-        if line.startswith('//') or line.startswith('#'):
-            continue
-        
-        # Try to match card pattern: quantity + card name
-        match = card_pattern.match(line)
-        if match:
-            quantity = int(match.group(1))
-            card_name = match.group(2).strip()
-            
-            # Skip zero or negative quantities
-            if quantity <= 0:
-                logger.debug(f"Skipping card with invalid quantity: {line}")
-                continue
-            
-            cards.append({
-                'quantity': quantity,
-                'card_name': card_name,
-                'section': current_section
-            })
-        else:
-            # Log malformed entries but continue processing
-            logger.debug(f"Skipping malformed decklist line: {line}")
-    
-    mainboard_count = sum(1 for c in cards if c['section'] == 'mainboard')
-    sideboard_count = sum(1 for c in cards if c['section'] == 'sideboard')
-    logger.debug(f"Parsed decklist: {len(cards)} total cards ({mainboard_count} mainboard, {sideboard_count} sideboard)")
-    
-    return cards
-
-
-def is_commander_format(format_name: str) -> bool:
-    """
-    Check if a format is a Commander format
-    
-    Args:
-        format_name: Format name from API
-    
-    Returns:
-        True if format is a Commander format, False otherwise
-    """
-    if not format_name:
-        return False
-    
-    return format_name.strip() in COMMANDER_FORMATS
-
-
-def is_limited_format(format_name: str) -> bool:
-    """
-    Check if a format is a Limited format (Draft, Sealed, etc.)
-    
-    Args:
-        format_name: Format name from API
-    
-    Returns:
-        True if format is a Limited format, False otherwise
-    """
-    if not format_name:
-        return False
-    
-    return format_name.strip() in LIMITED_FORMATS
-
-
-def should_include_tournament(tournament: Dict) -> bool:
-    """
-    Determine if a tournament should be included in the database
-    
-    Args:
-        tournament: Tournament dictionary from API
-    
-    Returns:
-        True if tournament should be included, False otherwise
-    """
-    format_name = tournament.get('format', '')
-    
-    # Exclude Commander formats
-    if is_commander_format(format_name):
-        logger.debug(f"Excluding Commander tournament: {tournament.get('TID')} - {format_name}")
-        return False
-    
-    # Exclude Limited formats (constructed-only database)
-    if is_limited_format(format_name):
-        logger.debug(f"Excluding Limited tournament: {tournament.get('TID')} - {format_name}")
-        return False
-    
-    # Must be Magic: The Gathering
-    game = tournament.get('game', '')
-    if game != 'Magic: The Gathering':
-        logger.debug(f"Excluding non-MTG tournament: {tournament.get('TID')} - {game}")
-        return False
-    
-    return True
-
-
-def is_valid_match(table_data: Dict) -> bool:
-    """
-    Check if a match table is a valid 1v1 match
-    
-    Args:
-        table_data: Table dictionary from API rounds endpoint
-    
-    Returns:
-        True if valid 1v1 match, False otherwise
-    """
-    players = table_data.get('players', [])
-    
-    if len(players) > 2:
-        logger.debug(f"Skipping match with {len(players)} players (not 1v1)")
-        return False
-    
-    return True
-
-
-def filter_tournaments(tournaments: List[Dict]) -> List[Dict]:
-    """
-    Filter tournaments to exclude Commander formats and Limited formats
-    
-    Args:
-        tournaments: List of tournament dictionaries
-    
-    Returns:
-        Filtered list of tournaments (constructed-only)
-    """
-    filtered = [t for t in tournaments if should_include_tournament(t)]
-    excluded_count = len(tournaments) - len(filtered)
-    if excluded_count > 0:
-        logger.info(f"Filtered out {excluded_count} Commander/Limited/non-MTG tournaments")
-    return filtered
-
-
-def filter_rounds_data(rounds_data: List[Dict]) -> List[Dict]:
-    """
-    Filter rounds data to only include valid 1v1 matches
-    
-    Args:
-        rounds_data: List of round dictionaries from API
-    
-    Returns:
-        Filtered list of rounds with only valid 1v1 matches
-    """
-    filtered_rounds = []
-    
-    for round_data in rounds_data:
-        round_number = round_data.get('round')
-        tables = round_data.get('tables', [])
-        
-        # Filter tables to only include valid 1v1 matches
-        valid_tables = [t for t in tables if is_valid_match(t)]
-        
-        if valid_tables:
-            filtered_round = round_data.copy()
-            filtered_round['tables'] = valid_tables
-            filtered_rounds.append(filtered_round)
-    
-    return filtered_rounds
-
-
-def load_cards_from_bulk_data(
-    oracle_cards_url: Optional[str] = None,
-    rulings_url: Optional[str] = None,
-    batch_size: int = 1000
-) -> Dict[str, int]:
-    """
-    Load cards from Scryfall bulk data into the database.
-    
-    Downloads oracle cards and rulings bulk data, joins them, transforms to database
-    format, and inserts/updates cards in the database using batch insertion with
-    upsert logic (ON CONFLICT DO UPDATE).
-    
-    Args:
-        oracle_cards_url: Optional URL for oracle cards bulk data (fetches if None)
-        rulings_url: Optional URL for rulings bulk data (fetches if None)
-        batch_size: Number of cards to insert per batch (default: 1000)
-    
-    Returns:
-        Dictionary with keys:
-        - cards_loaded: Number of cards successfully loaded
-        - cards_processed: Total number of cards processed
-        - errors: Number of errors encountered
-    """
-    client = ScryfallClient()
-    
-    # Download oracle cards bulk data
-    logger.info("Downloading oracle cards bulk data...")
-    oracle_data = client.download_oracle_cards(oracle_cards_url)
-    if not oracle_data or 'data' not in oracle_data:
-        logger.error("Failed to download oracle cards bulk data")
-        return {'cards_loaded': 0, 'cards_processed': 0, 'errors': 1}
-    
-    cards = oracle_data['data']
-    logger.info(f"Downloaded {len(cards)} oracle cards")
-    
-    # Download rulings bulk data
-    logger.info("Downloading rulings bulk data...")
-    rulings_data = client.download_rulings(rulings_url)
-    if not rulings_data or 'data' not in rulings_data:
-        logger.warning("Failed to download rulings bulk data, continuing without rulings")
-        rulings = []
-    else:
-        rulings = rulings_data['data']
-        logger.info(f"Downloaded {len(rulings)} rulings")
-    
-    # Join cards with rulings
-    logger.info("Joining cards with rulings...")
-    cards_with_rulings = client.join_cards_with_rulings(cards, rulings)
-    logger.info(f"Joined {len(cards_with_rulings)} cards with rulings")
-    
-    # Transform cards to database row format
-    logger.info("Transforming cards to database format...")
-    db_rows = []
-    for card in cards_with_rulings:
-        try:
-            db_row = client.transform_card_to_db_row(card)
-            db_rows.append(db_row)
-        except Exception as e:
-            logger.error(f"Error transforming card {card.get('id', 'unknown')}: {e}")
-            continue
-    
-    logger.info(f"Transformed {len(db_rows)} cards to database format")
-    
-    # Batch insert into database
-    logger.info(f"Inserting {len(db_rows)} cards into database (batch size: {batch_size})...")
-    cards_loaded = 0
-    errors = 0
-    
-    try:
-        with DatabaseConnection.transaction() as conn:
-            cur = conn.cursor()
-            
-            # Process in batches
-            for i in range(0, len(db_rows), batch_size):
-                batch = db_rows[i:i + batch_size]
-                
-                try:
-                    # Prepare batch data as tuples
-                    batch_data = [
-                        (
-                            row['card_id'],
-                            row.get('set'),
-                            row.get('collector_num'),
-                            row['name'],
-                            row.get('oracle_text'),
-                            row.get('rulings', ''),
-                            row.get('type_line'),
-                            row.get('mana_cost'),
-                            row.get('cmc'),
-                            row.get('color_identity', []),
-                            row.get('scryfall_uri')
-                        )
-                        for row in batch
-                    ]
-                    
-                    # Execute batch insert with upsert logic
-                    execute_batch(
-                        cur,
-                        """
-                        INSERT INTO cards (
-                            card_id, set, collector_num, name, oracle_text,
-                            rulings, type_line, mana_cost, cmc, color_identity, scryfall_uri
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (card_id) DO UPDATE SET
-                            set = EXCLUDED.set,
-                            collector_num = EXCLUDED.collector_num,
-                            name = EXCLUDED.name,
-                            oracle_text = EXCLUDED.oracle_text,
-                            rulings = EXCLUDED.rulings,
-                            type_line = EXCLUDED.type_line,
-                            mana_cost = EXCLUDED.mana_cost,
-                            cmc = EXCLUDED.cmc,
-                            color_identity = EXCLUDED.color_identity,
-                            scryfall_uri = EXCLUDED.scryfall_uri
-                        """,
-                        batch_data
-                    )
-                    
-                    cards_loaded += len(batch)
-                    logger.debug(f"Inserted batch {i // batch_size + 1}: {len(batch)} cards")
-                    
-                except Exception as e:
-                    logger.error(f"Error inserting batch {i // batch_size + 1}: {e}")
-                    errors += len(batch)
-                    # Continue with next batch
-                    continue
-            
-            cur.close()
-            logger.info(f"Successfully loaded {cards_loaded} cards into database")
-            
-    except Exception as e:
-        logger.error(f"Database transaction failed: {e}")
-        errors += len(db_rows) - cards_loaded
-        raise
-    
-    return {
-        'cards_loaded': cards_loaded,
-        'cards_processed': len(db_rows),
-        'errors': errors
-    }
-
-
-class ETLPipeline:
+class TournamentsPipeline(BasePipeline):
     """ETL pipeline for TopDeck tournament data"""
     
     def __init__(self, api_key: Optional[str] = None):
         """
-        Initialize ETL pipeline
+        Initialize tournaments pipeline
         
         Args:
             api_key: TopDeck API key (optional, uses env var if not provided)
@@ -417,46 +49,126 @@ class ETLPipeline:
         self.client = TopDeckClient(api_key)
         DatabaseConnection.initialize_pool()
     
-    def get_last_load_timestamp(self) -> Optional[int]:
+    def is_commander_format(self, format_name: str) -> bool:
         """
-        Get the timestamp of the last successful load
-        
-        Returns:
-            Unix timestamp of last load, or None if no previous load
-        """
-        try:
-            with DatabaseConnection.get_cursor() as cur:
-                cur.execute(
-                    "SELECT last_load_timestamp FROM load_metadata ORDER BY id DESC LIMIT 1"
-                )
-                result = cur.fetchone()
-                if result:
-                    return result[0]
-                return None
-        except Exception as e:
-            logger.error(f"Error getting last load timestamp: {e}")
-            return None
-    
-    def update_load_metadata(self, last_timestamp: int, tournaments_loaded: int) -> None:
-        """
-        Update load metadata after successful load
+        Check if a format is a Commander format
         
         Args:
-            last_timestamp: Unix timestamp of the latest tournament loaded
-            tournaments_loaded: Number of tournaments loaded in this batch
+            format_name: Format name from API
+        
+        Returns:
+            True if format is a Commander format, False otherwise
         """
-        try:
-            with DatabaseConnection.get_cursor(commit=True) as cur:
-                cur.execute(
-                    """
-                    INSERT INTO load_metadata (last_load_timestamp, tournaments_loaded, load_type)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (last_timestamp, tournaments_loaded, 'incremental')
-                )
-        except Exception as e:
-            logger.error(f"Error updating load metadata: {e}")
-            raise
+        if not format_name:
+            return False
+        
+        return format_name.strip() in COMMANDER_FORMATS
+    
+    def is_limited_format(self, format_name: str) -> bool:
+        """
+        Check if a format is a Limited format (Draft, Sealed, etc.)
+        
+        Args:
+            format_name: Format name from API
+        
+        Returns:
+            True if format is a Limited format, False otherwise
+        """
+        if not format_name:
+            return False
+        
+        return format_name.strip() in LIMITED_FORMATS
+    
+    def should_include_tournament(self, tournament: Dict) -> bool:
+        """
+        Determine if a tournament should be included in the database
+        
+        Args:
+            tournament: Tournament dictionary from API
+        
+        Returns:
+            True if tournament should be included, False otherwise
+        """
+        format_name = tournament.get('format', '')
+        
+        # Exclude Commander formats
+        if self.is_commander_format(format_name):
+            logger.debug(f"Excluding Commander tournament: {tournament.get('TID')} - {format_name}")
+            return False
+        
+        # Exclude Limited formats (constructed-only database)
+        if self.is_limited_format(format_name):
+            logger.debug(f"Excluding Limited tournament: {tournament.get('TID')} - {format_name}")
+            return False
+        
+        # Must be Magic: The Gathering
+        game = tournament.get('game', '')
+        if game != 'Magic: The Gathering':
+            logger.debug(f"Excluding non-MTG tournament: {tournament.get('TID')} - {game}")
+            return False
+        
+        return True
+    
+    def is_valid_match(self, table_data: Dict) -> bool:
+        """
+        Check if a match table is a valid 1v1 match
+        
+        Args:
+            table_data: Table dictionary from API rounds endpoint
+        
+        Returns:
+            True if valid 1v1 match, False otherwise
+        """
+        players = table_data.get('players', [])
+        
+        if len(players) > 2:
+            logger.debug(f"Skipping match with {len(players)} players (not 1v1)")
+            return False
+        
+        return True
+    
+    def filter_tournaments(self, tournaments: List[Dict]) -> List[Dict]:
+        """
+        Filter tournaments to exclude Commander formats and Limited formats
+        
+        Args:
+            tournaments: List of tournament dictionaries
+        
+        Returns:
+            Filtered list of tournaments (constructed-only)
+        """
+        filtered = [t for t in tournaments if self.should_include_tournament(t)]
+        excluded_count = len(tournaments) - len(filtered)
+        if excluded_count > 0:
+            logger.info(f"Filtered out {excluded_count} Commander/Limited/non-MTG tournaments")
+        return filtered
+    
+    def filter_rounds_data(self, rounds_data: List[Dict]) -> List[Dict]:
+        """
+        Filter rounds data to only include valid 1v1 matches
+        
+        Args:
+            rounds_data: List of round dictionaries from API
+        
+        Returns:
+            Filtered list of rounds with only valid 1v1 matches
+        """
+        filtered_rounds = []
+        
+        for round_data in rounds_data:
+            round_number = round_data.get('round')
+            tables = round_data.get('tables', [])
+            
+            # Filter tables to only include valid 1v1 matches
+            valid_tables = [t for t in tables if self.is_valid_match(t)]
+            
+            if valid_tables:
+                filtered_round = round_data.copy()
+                filtered_round['tables'] = valid_tables
+                filtered_rounds.append(filtered_round)
+        
+        return filtered_rounds
+    
     
     def insert_tournament(self, tournament: Dict, conn) -> None:
         """
@@ -614,7 +326,7 @@ class ETLPipeline:
         finally:
             cur.close()
     
-    def parse_and_store_decklist_cards(
+    def insert_deck_cards(
         self,
         player_id: str,
         tournament_id: str,
@@ -682,6 +394,7 @@ class ETLPipeline:
                 section = card['section']
                 
                 # Look up card_id by name
+                # Try exact match first
                 cur.execute(
                     """
                     SELECT card_id FROM cards
@@ -691,6 +404,57 @@ class ETLPipeline:
                     (card_name,)
                 )
                 card_result = cur.fetchone()
+                
+                # If not found, try as front face of double-faced card (e.g., "CardName // OtherSide")
+                if not card_result:
+                    cur.execute(
+                        """
+                        SELECT card_id FROM cards
+                        WHERE name LIKE %s
+                        LIMIT 1
+                        """,
+                        (f'{card_name} // %',)
+                    )
+                    card_result = cur.fetchone()
+                    if card_result:
+                        logger.debug(f"Matched '{card_name}' as front face of double-faced card")
+                
+                # If still not found, try as back face of double-faced card (e.g., "OtherSide // CardName")
+                if not card_result:
+                    cur.execute(
+                        """
+                        SELECT card_id FROM cards
+                        WHERE name LIKE %s
+                        LIMIT 1
+                        """,
+                        (f'% // {card_name}',)
+                    )
+                    card_result = cur.fetchone()
+                    if card_result:
+                        logger.debug(f"Matched '{card_name}' as back face of double-faced card")
+                
+                # Tier 4: Case-insensitive exact match
+                if not card_result:
+                    cur.execute(
+                        """
+                        SELECT card_id, name FROM cards
+                        WHERE LOWER(name) = LOWER(%s)
+                        LIMIT 1
+                        """,
+                        (card_name,)
+                    )
+                    result = cur.fetchone()
+                    if result:
+                        logger.debug(f"Matched '{card_name}' via case-insensitive search as '{result[1]}'")
+                        card_result = (result[0],)
+                
+                # Tier 5: Fuzzy matching with Levenshtein distance
+                if not card_result:
+                    fuzzy_match = find_fuzzy_card_match(card_name, cur, threshold=2)
+                    if fuzzy_match:
+                        card_id, matched_name = fuzzy_match
+                        logger.info(f"Matched '{card_name}' via fuzzy search as '{matched_name}'")
+                        card_result = (card_id,)
                 
                 if card_result:
                     card_id = card_result[0]
@@ -823,7 +587,8 @@ class ETLPipeline:
                     """
                     INSERT INTO match_rounds (round_number, tournament_id, round_description)
                     VALUES (%s, %s, %s)
-                    ON CONFLICT (round_number, tournament_id) DO NOTHING
+                    ON CONFLICT (round_number, tournament_id) DO UPDATE SET
+                        round_description = EXCLUDED.round_description
                     """,
                     round_data
                 )
@@ -842,8 +607,8 @@ class ETLPipeline:
                     continue
                 
                 tables = round_info.get('tables', [])
-                for table in tables:
-                    if not is_valid_match(table):
+                for table_idx, table in enumerate(tables):
+                    if not self.is_valid_match(table):
                         continue
                     
                     players = table.get('players', [])
@@ -874,10 +639,17 @@ class ETLPipeline:
                         skipped_matches += 1
                         continue
                     
+                    # Get match_num from API if available, otherwise use table index
+                    # match_num is required (NOT NULL in schema)
+                    match_num = table.get('table')
+                    if not isinstance(match_num, int) or match_num is None:
+                        # For byes and other matches without a table number, use index
+                        match_num = table_idx + 1
+                    
                     match_data.append((
                         round_number,
                         tournament_id,
-                        table.get('table') if isinstance(table.get('table'), int) else None,
+                        match_num,
                         player1_id,
                         player2_id,
                         winner_id,
@@ -916,7 +688,7 @@ class ETLPipeline:
         finally:
             cur.close()
     
-    def load_tournament(self, tournament: Dict, include_rounds: bool = True) -> bool:
+    def insert_all(self, tournament: Dict, include_rounds: bool = True) -> bool:
         """
         Load a single tournament into the database
         
@@ -941,7 +713,8 @@ class ETLPipeline:
                 logger.debug(f"Fetching tournament details for {tournament_id}")
                 tournament_details = self.client.get_tournament_details(tournament_id)
                 if tournament_details:
-                    players = tournament_details.get('players', [])
+                    # TopDeck API returns player data in 'standings' key
+                    players = tournament_details.get('standings', [])
                     logger.debug(f"Tournament details returned {len(players)} players for {tournament_id}")
                     if players:
                         self.insert_players(tournament_id, players, conn)
@@ -952,7 +725,7 @@ class ETLPipeline:
                             decklist = player.get('decklist')
                             if decklist:
                                 try:
-                                    self.parse_and_store_decklist_cards(
+                                    self.insert_deck_cards(
                                         player.get('id'),
                                         tournament_id,
                                         decklist,
@@ -976,7 +749,7 @@ class ETLPipeline:
                     rounds_data = self.client.get_tournament_rounds(tournament_id)
                     if rounds_data:
                         logger.debug(f"Fetched {len(rounds_data)} rounds for tournament {tournament_id}")
-                        filtered_rounds = filter_rounds_data(rounds_data)
+                        filtered_rounds = self.filter_rounds_data(rounds_data)
                         logger.debug(f"After filtering, {len(filtered_rounds)} rounds remain for tournament {tournament_id}")
                         if filtered_rounds:
                             self.insert_match_rounds(tournament_id, filtered_rounds, conn)
@@ -991,15 +764,20 @@ class ETLPipeline:
             logger.error(f"Error loading tournament {tournament_id}: {e}")
             return False
     
-    def load_initial(self, days_back: int = 90) -> int:
+    def load_initial(self, days_back: int = 90, limit: Optional[int] = None) -> Dict[str, Any]:
         """
         Perform initial load of tournaments from the past N days
         
         Args:
             days_back: Number of days back to load (default: 90)
+            limit: Optional limit on number of tournaments to load (default: None for all)
         
         Returns:
-            Number of tournaments loaded
+            Dictionary with keys:
+            - success: bool - True if load completed without errors
+            - objects_loaded: int - Number of tournaments loaded
+            - objects_processed: int - Total tournaments processed
+            - errors: int - Number of errors
         """
         logger.info(f"Starting initial load for past {days_back} days")
         
@@ -1029,8 +807,16 @@ class ETLPipeline:
                         if tid and tid not in tournament_ids:
                             tournament_ids.add(tid)
                             all_tournaments.append(tournament)
+                            
+                            # Apply limit if specified
+                            if limit and len(all_tournaments) >= limit:
+                                break
                     
                     logger.debug(f"Found {len(tournaments)} tournaments for {format_name}")
+                    
+                    # Break outer loop if limit reached
+                    if limit and len(all_tournaments) >= limit:
+                        break
             except Exception as e:
                 logger.warning(f"Error fetching tournaments for format {format_name}: {e}")
                 continue
@@ -1039,44 +825,77 @@ class ETLPipeline:
         
         if not tournaments:
             logger.warning("No tournaments found")
-            return 0
+            return {
+                'success': True,
+                'objects_loaded': 0,
+                'objects_processed': 0,
+                'errors': 0
+            }
         
         # Filter out Commander formats
-        filtered_tournaments = filter_tournaments(tournaments)
+        filtered_tournaments = self.filter_tournaments(tournaments)
+        
+        # Apply limit after filtering if specified
+        if limit and len(filtered_tournaments) > limit:
+            filtered_tournaments = filtered_tournaments[:limit]
+            logger.info(f"Limited to {limit} tournaments after filtering")
+        
         logger.info(f"Found {len(filtered_tournaments)} tournaments to load (after filtering)")
         
         # Load tournaments
         loaded_count = 0
+        error_count = 0
         max_timestamp = 0
         
         for tournament in filtered_tournaments:
-            if self.load_tournament(tournament, include_rounds=True):
+            if self.insert_all(tournament, include_rounds=True):
                 loaded_count += 1
                 start_date = tournament.get('startDate', 0)
                 if start_date > max_timestamp:
                     max_timestamp = start_date
+            else:
+                error_count += 1
         
         # Update load metadata
         if loaded_count > 0 and max_timestamp > 0:
-            self.update_load_metadata(max_timestamp, loaded_count)
+            update_load_metadata(
+                last_timestamp=max_timestamp, 
+                objects_loaded=loaded_count, 
+                data_type='tournaments',
+                load_type='initial'
+            )
         
         logger.info(f"Initial load complete: {loaded_count} tournaments loaded")
-        return loaded_count
+        
+        # Standardize return format
+        return {
+            'success': error_count == 0,
+            'objects_loaded': loaded_count,
+            'objects_processed': len(filtered_tournaments),
+            'errors': error_count
+        }
     
-    def load_incremental(self) -> int:
+    def load_incremental(self, limit: Optional[int] = None) -> Dict[str, Any]:
         """
         Perform incremental load of new tournaments since last load
         
+        Args:
+            limit: Optional limit on number of tournaments to load (default: None for all)
+        
         Returns:
-            Number of tournaments loaded
+            Dictionary with keys:
+            - success: bool - True if load completed without errors
+            - objects_loaded: int - Number of tournaments loaded
+            - objects_processed: int - Total tournaments processed
+            - errors: int - Number of errors
         """
         logger.info("Starting incremental load")
         
         # Get last load timestamp
-        last_timestamp = self.get_last_load_timestamp()
+        last_timestamp = get_last_load_timestamp('tournaments')
         if not last_timestamp:
             logger.info("No previous load found, performing initial load instead")
-            return self.load_initial()
+            return self.load_initial(limit=limit)
         
         # Fetch tournaments since last load
         # Calculate days since last load to use 'last' parameter
@@ -1108,8 +927,16 @@ class ETLPipeline:
                         if tid and tid not in tournament_ids:
                             tournament_ids.add(tid)
                             all_tournaments.append(tournament)
+                            
+                            # Apply limit if specified
+                            if limit and len(all_tournaments) >= limit:
+                                break
                     
                     logger.debug(f"Found {len(format_tournaments)} new tournaments for {format_name}")
+                    
+                    # Break outer loop if limit reached
+                    if limit and len(all_tournaments) >= limit:
+                        break
             except Exception as e:
                 logger.warning(f"Error fetching tournaments for format {format_name}: {e}")
                 continue
@@ -1118,26 +945,53 @@ class ETLPipeline:
         
         if not tournaments:
             logger.info("No new tournaments found")
-            return 0
+            return {
+                'success': True,
+                'objects_loaded': 0,
+                'objects_processed': 0,
+                'errors': 0
+            }
         
         # Filter out Commander formats
-        filtered_tournaments = filter_tournaments(tournaments)
+        filtered_tournaments = self.filter_tournaments(tournaments)
+        
+        # Apply limit after filtering if specified
+        if limit and len(filtered_tournaments) > limit:
+            filtered_tournaments = filtered_tournaments[:limit]
+            logger.info(f"Limited to {limit} tournaments after filtering")
+        
         logger.info(f"Found {len(filtered_tournaments)} new tournaments to load (after filtering)")
         
         # Load tournaments
         loaded_count = 0
+        error_count = 0
         max_timestamp = last_timestamp
         
         for tournament in filtered_tournaments:
-            if self.load_tournament(tournament, include_rounds=True):
+            if self.insert_all(tournament, include_rounds=True):
                 loaded_count += 1
                 start_date = tournament.get('startDate', 0)
                 if start_date > max_timestamp:
                     max_timestamp = start_date
+            else:
+                error_count += 1
         
         # Update load metadata
         if loaded_count > 0 and max_timestamp > last_timestamp:
-            self.update_load_metadata(max_timestamp, loaded_count)
+            update_load_metadata(
+                last_timestamp=max_timestamp, 
+                objects_loaded=loaded_count, 
+                data_type='tournaments', 
+                load_type='incremental'
+            )
         
         logger.info(f"Incremental load complete: {loaded_count} tournaments loaded")
-        return loaded_count
+        
+        # Standardize return format
+        return {
+            'success': error_count == 0,
+            'objects_loaded': loaded_count,
+            'objects_processed': len(filtered_tournaments),
+            'errors': error_count
+        }
+

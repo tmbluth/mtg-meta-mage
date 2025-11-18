@@ -303,39 +303,4 @@ class ScryfallClient:
             "color_identity": color_identity,
             "scryfall_uri": card.get("scryfall_uri")
         }
-    
-    def get_card_price(self, card_name: str) -> Optional[float]:
-        """Get current price for a card by name"""
-        try:
-            # Use the named card endpoint
-            data = self._request("GET", f"/cards/named", params={"exact": card_name})
-            if not data:
-                return None
-            
-            # Try to get USD price from prices object
-            prices = data.get("prices", {})
-            usd_price = prices.get("usd")
-            
-            if usd_price:
-                return float(usd_price)
-            
-            # Try foil price if regular price not available
-            usd_foil = prices.get("usd_foil")
-            if usd_foil:
-                return float(usd_foil)
-            
-            logger.warning(f"No price found for {card_name}")
-            return None
-        except Exception as e:
-            logger.error(f"Error fetching price for {card_name}: {e}")
-            return None
-    
-    def get_card_by_name(self, card_name: str) -> Optional[Dict]:
-        """Get full card data by name"""
-        try:
-            data = self._request("GET", f"/cards/named", params={"exact": card_name})
-            return data
-        except Exception as e:
-            logger.error(f"Error fetching card {card_name}: {e}")
-            return None
 

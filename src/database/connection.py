@@ -20,12 +20,18 @@ class DatabaseConnection:
     _connection_pool: Optional[pool.ThreadedConnectionPool] = None
     
     @classmethod
-    def _get_connection_params(cls) -> dict:
-        """Get database connection parameters from environment variables"""
+    def _get_connection_params(cls, database: Optional[str] = None) -> dict:
+        """
+        Get database connection parameters from environment variables
+        
+        Args:
+            database: Optional database name. If None, uses DB_NAME from environment.
+                     Use 'postgres' to connect to default PostgreSQL database.
+        """
         return {
             'host': os.getenv('DB_HOST', 'localhost'),
             'port': int(os.getenv('DB_PORT', 5432)),
-            'database': os.getenv('DB_NAME'),
+            'database': database or os.getenv('DB_NAME'),
             'user': os.getenv('DB_USER'),
             'password': os.getenv('DB_PASSWORD'),
         }
@@ -159,20 +165,152 @@ class DatabaseConnection:
             logger.info("Connection pool closed")
     
     @classmethod
-    def execute_schema_file(cls, schema_file_path: str) -> None:
+    def execute_schema_file(cls, schema_file_path: str, database: Optional[str] = None) -> None:
         """
         Execute a SQL schema file
         
         Args:
             schema_file_path: Path to the SQL schema file
+            database: Optional database name. If None, uses DB_NAME from environment.
         """
         with open(schema_file_path, 'r') as f:
             schema_sql = f.read()
         
-        with cls.transaction() as conn:
-            cur = conn.cursor()
-            cur.execute(schema_sql)
-            cur.close()
+        # If database is specified, create a direct connection to it
+        # Otherwise, use the connection pool
+        if database:
+            params = cls._get_connection_params(database=database)
+            required_params = ['user', 'password']
+            missing_params = [p for p in required_params if not params.get(p)]
+            if missing_params:
+                raise ValueError(f"Missing required database parameters: {', '.join(missing_params)}")
+            
+            conn = None
+            try:
+                conn = psycopg2.connect(**params)
+                cur = conn.cursor()
+                cur.execute(schema_sql)
+                conn.commit()
+                cur.close()
+                logger.info(f"Schema file executed: {schema_file_path} on database: {database}")
+            except Exception as e:
+                if conn:
+                    conn.rollback()
+                logger.error(f"Failed to execute schema file on database '{database}': {e}")
+                raise
+            finally:
+                if conn:
+                    conn.close()
+        else:
+            # Use connection pool for default database
+            with cls.transaction() as conn:
+                cur = conn.cursor()
+                cur.execute(schema_sql)
+                cur.close()
+            
+            logger.info(f"Schema file executed: {schema_file_path}")
+    
+    @classmethod
+    def database_exists(cls, database_name: str) -> bool:
+        """
+        Check if a database exists
         
-        logger.info(f"Schema file executed: {schema_file_path}")
+        Args:
+            database_name: Name of the database to check
+            
+        Returns:
+            True if database exists, False otherwise
+        """
+        params = cls._get_connection_params(database='postgres')
+        
+        # Validate required parameters
+        required_params = ['user', 'password']
+        missing_params = [p for p in required_params if not params.get(p)]
+        if missing_params:
+            raise ValueError(f"Missing required database parameters: {', '.join(missing_params)}")
+        
+        try:
+            conn = psycopg2.connect(**params)
+            conn.autocommit = True
+            cur = conn.cursor()
+            
+            # Check if database exists
+            cur.execute(
+                "SELECT 1 FROM pg_database WHERE datname = %s",
+                (database_name,)
+            )
+            exists = cur.fetchone() is not None
+            
+            cur.close()
+            conn.close()
+            
+            return exists
+        except Exception as e:
+            logger.error(f"Failed to check if database exists: {e}")
+            raise
+    
+    @classmethod
+    def create_database(cls, database_name: str) -> None:
+        """
+        Create a database if it doesn't exist
+        
+        Args:
+            database_name: Name of the database to create
+        """
+        if cls.database_exists(database_name):
+            logger.info(f"Database '{database_name}' already exists")
+            return
+        
+        params = cls._get_connection_params(database='postgres')
+        
+        # Validate required parameters
+        required_params = ['user', 'password']
+        missing_params = [p for p in required_params if not params.get(p)]
+        if missing_params:
+            raise ValueError(f"Missing required database parameters: {', '.join(missing_params)}")
+        
+        try:
+            conn = psycopg2.connect(**params)
+            conn.autocommit = True
+            cur = conn.cursor()
+            
+            # Create database
+            cur.execute(sql.SQL("CREATE DATABASE {}").format(
+                sql.Identifier(database_name)
+            ))
+            
+            cur.close()
+            conn.close()
+            
+            logger.info(f"Database '{database_name}' created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create database '{database_name}': {e}")
+            raise
+    
+    @classmethod
+    def ensure_database_exists(cls, database_name: str) -> None:
+        """
+        Ensure a database exists, creating it if necessary
+        
+        Args:
+            database_name: Name of the database to ensure exists
+        """
+        if not cls.database_exists(database_name):
+            cls.create_database(database_name)
+        else:
+            logger.info(f"Database '{database_name}' already exists")
+    
+    @classmethod
+    def initialize_database(cls, database_name: str, schema_file_path: str) -> None:
+        """
+        Initialize a database: ensure it exists and execute the schema file
+        
+        Args:
+            database_name: Name of the database to initialize
+            schema_file_path: Path to the SQL schema file
+        """
+        logger.info(f"Initializing database '{database_name}'...")
+        cls.ensure_database_exists(database_name)
+        cls.execute_schema_file(schema_file_path, database=database_name)
+        logger.info(f"Database '{database_name}' initialized successfully")
 

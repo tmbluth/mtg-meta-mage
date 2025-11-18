@@ -8,7 +8,8 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.etl.etl_pipeline import ETLPipeline, load_cards_from_bulk_data
+from src.etl.tournaments_pipeline import TournamentsPipeline
+from src.etl.cards_pipeline import CardsPipeline
 from src.database.connection import DatabaseConnection
 
 logging.basicConfig(
@@ -20,31 +21,42 @@ logger = logging.getLogger(__name__)
 
 def load_tournaments(args):
     """Load tournament data from TopDeck"""
-    pipeline = ETLPipeline()
+    pipeline = TournamentsPipeline()
     
     if args.mode == 'initial':
         logger.info(f"Starting initial tournament load (past {args.days} days)")
-        count = pipeline.load_initial(days_back=args.days)
+        result = pipeline.load_initial(days_back=args.days)
     else:
         logger.info("Starting incremental tournament load")
-        count = pipeline.load_incremental()
+        result = pipeline.load_incremental()
     
-    logger.info(f"Tournament load complete: {count} tournaments loaded")
-    return count
+    logger.info(f"Tournament load complete:")
+    logger.info(f"  - Objects loaded: {result['objects_loaded']}")
+    logger.info(f"  - Objects processed: {result['objects_processed']}")
+    logger.info(f"  - Errors: {result['errors']}")
+    logger.info(f"  - Success: {result['success']}")
+    
+    return result
 
 
 def load_cards(args):
     """Load card data from Scryfall"""
-    logger.info("Starting Scryfall card data load...")
+    pipeline = CardsPipeline()
     
-    result = load_cards_from_bulk_data(batch_size=args.batch_size)
+    if args.mode == 'initial':
+        logger.info("Starting initial card load from Scryfall")
+        result = pipeline.load_initial(batch_size=args.batch_size)
+    else:
+        logger.info("Starting incremental card load from Scryfall")
+        result = pipeline.load_incremental(batch_size=args.batch_size)
     
     logger.info(f"Card load complete:")
-    logger.info(f"  - Cards loaded: {result['cards_loaded']}")
-    logger.info(f"  - Cards processed: {result['cards_processed']}")
+    logger.info(f"  - Objects loaded: {result['objects_loaded']}")
+    logger.info(f"  - Objects processed: {result['objects_processed']}")
     logger.info(f"  - Errors: {result['errors']}")
+    logger.info(f"  - Success: {result['success']}")
     
-    return result['cards_loaded']
+    return result
 
 
 def main():
@@ -54,21 +66,20 @@ def main():
     )
     parser.add_argument(
         '--data-type',
-        choices=['tournaments', 'cards', 'both'],
-        default='tournaments',
-        help='Type of data to load: tournaments (TopDeck), cards (Scryfall), or both (default: tournaments)'
+        choices=['tournaments', 'cards'],
+        help='Type of data to load: tournaments (TopDeck) or cards (Scryfall)'
     )
     parser.add_argument(
         '--mode',
         choices=['initial', 'incremental'],
         default='incremental',
-        help='Tournament load mode: initial (past 90 days) or incremental (since last load). Only applies when loading tournaments.'
+        help='Load mode: initial (full load) or incremental (since last load). Applies to both tournaments and cards.'
     )
     parser.add_argument(
         '--days',
         type=int,
-        default=90,
-        help='Number of days back for initial tournament load (default: 90). Only applies when loading tournaments.'
+        default=180,
+        help='Number of days back for initial tournament load (default: 180). Only applies when loading tournaments.'
     )
     parser.add_argument(
         '--batch-size',
@@ -82,22 +93,20 @@ def main():
     try:
         DatabaseConnection.initialize_pool()
         
-        tournament_count = None
-        card_count = None
-        
-        if args.data_type in ['tournaments', 'both']:
-            tournament_count = load_tournaments(args)
-        
-        if args.data_type in ['cards', 'both']:
-            card_count = load_cards(args)
-        
-        # Summary
-        if args.data_type == 'both':
-            logger.info(f"All loads complete: {tournament_count} tournaments, {card_count} cards")
+        result = None
+
+        # Load data based on type
+        if args.data_type == 'cards':
+            result = load_cards(args)
         elif args.data_type == 'tournaments':
-            logger.info(f"Load complete: {tournament_count} tournaments loaded")
-        else:
-            logger.info(f"Load complete: {card_count} cards loaded")
+            result = load_tournaments(args)
+        
+        # Final summary
+        if result:
+            logger.info(f"Load complete: {result['objects_loaded']} objects loaded")
+            if not result['success']:
+                logger.warning(f"Load completed with {result['errors']} errors")
+                return 1
         
         return 0
     except Exception as e:

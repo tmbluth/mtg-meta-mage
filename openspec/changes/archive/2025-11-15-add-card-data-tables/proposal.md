@@ -16,10 +16,15 @@ To enable deck synergy and optimization analysis, we need structured card data f
   - `src/database/schema.sql` - Add new tables and indexes 
   - `src/database/init_db.py` - Schema initialization (CLI script)
   - `src/etl/api_clients/scryfall_client.py` - Add card transformation methods (bulk download already exists)
-  - `src/etl/etl_pipeline.py` - Consolidated ETL pipeline including:
-    - Card data loading (`load_cards_from_bulk_data` function)
-    - Decklist parsing (`parse_decklist` function)
+  - `src/etl/base_pipeline.py` - Base abstract class for ETL pipelines
+  - `src/etl/cards_pipeline.py` - Cards ETL pipeline (`CardsPipeline` class) including:
+    - Card data loading (`insert_cards` method)
+  - `src/etl/tournaments_pipeline.py` - Tournament ETL pipeline (`TournamentsPipeline` class) including:
     - Tournament filtering functions (`filter_tournaments`, `filter_rounds_data`, etc.)
-    - Tournament ETL pipeline (`ETLPipeline` class)
-  - `src/etl/main.py` - CLI entry point for loading tournaments
+    - Decklist processing and deck_cards insertion (`insert_deck_cards` method)
+  - `src/etl/utils.py` - Utility functions including:
+    - Decklist parsing (`parse_decklist` function)
+    - Card name normalization (`normalize_card_name` function)
+    - Load metadata management (`get_last_load_timestamp`, `update_load_metadata`)
+  - `src/etl/main.py` - CLI entry point for loading tournaments and cards
 
