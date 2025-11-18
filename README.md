@@ -4,8 +4,9 @@ An AI-powered tool for analyzing Magic: The Gathering decklists against the comp
 
 ## Features
 
+- Card data collection from Scryfall API
 - Tournament data collection from TopDeck.gg API
-- PostgreSQL database for storing tournament, player, decklist, and match data
+- PostgreSQL database for storing tournament, player, decklist, match, and cards data
 - Initial bulk load and incremental update capabilities
 
 ## Prerequisites
@@ -37,7 +38,8 @@ Create a `.env` file in the project root with the following variables:
 # Database Configuration
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=mtg_meta_mage
+DB_NAME=mtg-meta-mage-db
+TEST_DB_NAME=mtg-meta-mage-db-test
 DB_USER=your_db_user
 DB_PASSWORD=your_db_password
 
@@ -45,209 +47,89 @@ DB_PASSWORD=your_db_password
 TOPDECK_API_KEY=your_topdeck_api_key
 ```
 
-## Database Setup
+## Data
+
+### Database Setup
 
 Create main and test DB and initialize the database schema:
 ```bash
 uv run python src/database/init_db.py
 ```
-
 This will create all necessary tables, indexes, and constraints.
 
-## Database Schema
+### Database Schema
 
 The database includes the following tables:
 
-### Tournament Data Tables
-- **tournaments**: Tournament metadata (ID, name, format, dates, location)
-- **players**: Player performance data per tournament
-- **decklists**: Decklist text storage linked to players
-- **match_rounds**: Round information for tournaments
-- **matches**: Individual match results (1v1 only)
-
-### Card Data Tables
+#### Card Data Tables
 - **cards**: Scryfall oracle card data (card_id, name, oracle_text, rulings, type_line, mana_cost, cmc, color_identity, etc.)
   - Stores canonical card information from Scryfall's oracle cards bulk data
-  - Each card represents a unique oracle card (not a specific printing)
-  - Cards are loaded via `load_cards_from_bulk_data()` function
-  - Indexed by name for efficient decklist matching
+  - **Must be loaded before tournaments** (see Data Loading Dependencies below)
 
-- **deck_cards**: Junction table linking decklists to individual cards
+#### Tournament Data Tables
+- **tournaments**: Tournament metadata (ID, name, format, dates, location). **Commander and Limited formats are filtered out**
+- **players**: Player performance data per tournament (depends on `tournaments`)
+- **decklists**: Decklist text storage linked to players (depends on `players`)
+- **match_rounds**: Round information for tournaments (depends on `tournaments`)
+- **matches**: Individual match results (1v1 only) (depends on `match_rounds` and `players`)
+
+#### Card + Tournament Table
+- **deck_cards**: Junction table linking tournament decklists to individual cards
   - Stores parsed card entries from decklists with quantities and sections (mainboard/sideboard)
-  - Cards are parsed from `decklist_text` using `parse_decklist()` function
-  - Automatically populated when tournaments are loaded via `parse_and_store_decklist_cards()`
-  - Cards not found in the cards table are logged but not stored
+  - Depends on both `decklists` and `cards` tables
+  - Cards are parsed from `decklist_text` using `parse_decklist()` utility function
 
-# Metadata Tables
+#### Metadata Table
 - **load_metadata**: Tracks last successful load timestamp for incremental updates
+  - Stores metadata for both tournament and card loads separately
+  - Uses `data_type` field to distinguish between 'tournaments' and 'cards'
+  - Uses `load_type` field to distinguish between 'initial' and 'incremental' loads
 
-## Usage
+### Loading Data
 
-### Loading Card Data from Scryfall
+**IMPORTANT**: Tables must be loaded in a specific order due to foreign key constraints:
+
+1. **Cards must be loaded before tournaments** - The `deck_cards` table has a foreign key to `cards`. If cards aren't loaded first, decklist parsing will still run but cards won't be found and won't be stored in `deck_cards`, resulting in incomplete decklist data.
+
+2. **Tournament data internal order** (handled automatically by the pipeline):
+   - `tournaments` → `players` → `decklists` → `deck_cards` (requires cards to exist)
+   - `tournaments` → `match_rounds` → `matches` (requires players to exist)
+
+**First-time setup order:**
+1. Initialize database schema
+2. Load cards (initial load)
+3. Load tournaments (initial load)
+
+#### Loading Card Data from Scryfall
 
 Before loading tournaments, you should load card data from Scryfall. This populates the `cards` table with oracle card information needed for decklist parsing.
 
-**Using the CLI script (recommended):**
-
 ```bash
-# Load only Scryfall card data
-uv run python src/etl/main.py --data-type cards
+# Initial load (full refresh)
+uv run python src/etl/main.py --data-type cards --mode initial
+
+# Incremental load skips existing cards
+uv run python src/etl/main.py --data-type cards --mode incremental
 
 # Load with custom batch size
-uv run python src/etl/main.py --data-type cards --batch-size 500
+uv run python src/etl/main.py --data-type cards --mode initial --batch-size 500
 ```
 
-**Using Python directly:**
-
-```python
-from src.etl.etl_pipeline import load_cards_from_bulk_data
-from src.database.connection import DatabaseConnection
-
-DatabaseConnection.initialize_pool()
-result = load_cards_from_bulk_data(batch_size=1000)
-print(f"Loaded {result['cards_loaded']} cards")
-DatabaseConnection.close_pool()
-```
-
-**Note**: Scryfall bulk data is large (hundreds of MB). The first load may take several minutes. Subsequent loads use upsert logic to update existing cards.
-
-**Recommendation**: Load Scryfall card data weekly or when new sets are released. See "Scryfall Bulk Data Updates" section below.
-
-### Loading Tournament Data
-
-#### Initial Load
-
-Load tournament data from the past 90 days (default) or specify a custom number of days:
-
-```bash
-# Load only tournament data
-uv run python src/etl/main.py --data-type tournaments --mode initial --days 90
-
-# Or use default (tournaments, incremental)
-uv run python src/etl/main.py --mode initial --days 90
-```
-
-#### Incremental Load
-
-Load new tournaments since the last successful load:
-
-```bash
-uv run python src/etl/main.py --data-type tournaments --mode incremental
-
-# Or use default (tournaments, incremental)
-uv run python src/etl/main.py
-```
+#### Loading Tournament Data
 
 The incremental load automatically tracks the last loaded tournament timestamp and only fetches new data. When tournaments are loaded, decklists are automatically parsed and linked to cards in the `deck_cards` table.
 
-### Loading Both Card Data and Tournament Data
-
-You can load both card data and tournament data in a single command:
+The TopDeck API has a rate limit of 200 requests per minute. The client automatically enforces this limit with a 300ms delay between requests and includes retry logic for rate limit errors.
 
 ```bash
-# Load both cards and tournaments (incremental tournament load)
-uv run python src/etl/main.py --data-type both
-
-# Load both with initial tournament load
-uv run python src/etl/main.py --data-type both --mode initial --days 90
-```
-
-This is useful for initial setup or when you want to refresh both datasets at once.
-
-## Data Loading Scenarios
-
-### Scenario 1: First-Time Setup
-
-When setting up the database for the first time, you need to load card data before loading tournaments (so decklists can be properly parsed).
-
-**Step 1: Initialize Database Schema**
-```bash
-uv run python src/database/init_db.py
-```
-
-**Step 2: Load Scryfall Card Data**
-```bash
-# This will take 5-10 minutes for the first load
-uv run python src/etl/main.py --data-type cards
-```
-
-**Step 3: Load Tournament Data**
-```bash
-# Load tournaments from the past 90 days
-uv run python src/etl/main.py --data-type tournaments --mode initial --days 90
-```
-
-**Alternative: Load Both at Once**
-```bash
-# Load cards first, then tournaments automatically
-uv run python src/etl/main.py --data-type both --mode initial --days 90
-```
-
-### Scenario 2: Regular Incremental Updates
-
-For ongoing operation, run incremental updates to fetch new tournaments since the last load.
-
-**Daily/Weekly Incremental Update**
-```bash
-# Load only new tournaments (fast, typically < 1 minute)
-uv run python src/etl/main.py --data-type tournaments --mode incremental
-
-# Or use the default (same as above)
-uv run python src/etl/main.py
-```
-
-**Note**: Card data doesn't need frequent updates. Only refresh cards when new sets are released or weekly/monthly.
-
-### Scenario 3: Refreshing Card Data After New Set Release
-
-When a new Magic set is released, refresh card data to include new cards.
-
-**Refresh Card Data Only**
-```bash
-# Updates existing cards and adds new ones (uses upsert logic)
-uv run python src/etl/main.py --data-type cards
-```
-
-**Refresh Both Cards and Load New Tournaments**
-```bash
-# Refresh cards, then load any new tournaments
-uv run python src/etl/main.py --data-type both --mode incremental
-```
-
-**Expected Time**: 3-5 minutes (faster than initial load since it's updating existing records)
-
-### Scenario 4: Loading Historical Tournament Data
-
-To load tournaments from a specific time period (e.g., for analysis of a particular format or time period):
-
-**Load Specific Date Range**
-```bash
-# Load tournaments from the past 180 days
+# Initial load overwrites any previous entry
 uv run python src/etl/main.py --data-type tournaments --mode initial --days 180
 
-# Load tournaments from the past 30 days
-uv run python src/etl/main.py --data-type tournaments --mode initial --days 30
+# "Incremental" only loads data since last load
+uv run python src/etl/main.py --data-type tournaments --mode incremental
 ```
 
-**Note**: The `--days` parameter only applies to initial loads. For incremental loads, it uses the last load timestamp automatically.
-
-### Scenario 5: Production Deployment Workflow
-
-For production systems, recommended workflow:
-
-**Initial Deployment**
-```bash
-# 1. Initialize database
-uv run python src/database/init_db.py
-
-# 2. Load card data (one-time, takes 5-10 minutes)
-uv run python src/etl/main.py --data-type cards
-
-# 3. Load initial tournament data
-uv run python src/etl/main.py --data-type tournaments --mode initial --days 90
-```
-
-**Scheduled Updates** (via cron or scheduler)
+#### Scheduled Updates
 
 **Daily**: Incremental tournament updates
 ```bash
@@ -255,25 +137,11 @@ uv run python src/etl/main.py --data-type tournaments --mode initial --days 90
 0 2 * * * cd /path/to/mtg-meta-mage && uv run python src/etl/main.py --data-type tournaments --mode incremental
 ```
 
-**Weekly**: Refresh card data
+**Check monthly for set releases**: Refresh card data
 ```bash
-# Run weekly (e.g., Sunday at 3 AM)
-0 3 * * 0 cd /path/to/mtg-meta-mage && uv run python src/etl/main.py --data-type cards
+# Run monthly (e.g., first Sunday of the month at 3 AM)
+0 3 1-7 * 0 cd /path/to/mtg-meta-mage && uv run python src/etl/main.py --data-type cards --mode incremental
 ```
-
-**Monthly**: Full refresh of both datasets
-```bash
-# Run monthly for comprehensive update
-0 4 1 * * cd /path/to/mtg-meta-mage && uv run python src/etl/main.py --data-type both --mode incremental
-```
-
-## Data Filtering
-
-The system automatically filters:
-
-- **Commander formats**: EDH, Pauper EDH, Duel Commander, Tiny Leaders, EDH Draft, Oathbreaker
-- **Multiplayer matches**: Only 1v1 matches and byes are stored (excludes pods with 3+ players)
-- **Game type**: Only Magic: The Gathering tournaments are included
 
 ## API Attribution
 
@@ -297,57 +165,22 @@ Or run individual test files:
 uv run pytest tests/test_your_file.py
 ```
 
-To run scripts with the virtual environment:
-
-```bash
-uv run python src/etl/main.py --data-type tournaments --mode initial
-```
-
 ## Project Structure
 
 ```
 mtg-meta-mage/
 ├── src/
 │   ├── database/
-│   ├── services/
-│   └── data/
+│   ├── etl/
+│   └──── api_clients/
 ├── tests/
 │   ├── unit/
 │   └── integration/
 ├── pyproject.toml
+├── AGENTS.md
 └── README.md
 ```
 
-## Rate Limiting
-
-The TopDeck API has a rate limit of 200 requests per minute. The client automatically enforces this limit with a 300ms delay between requests and includes retry logic for rate limit errors.
-
-## Error Handling
-
-The ETL pipeline includes comprehensive error handling:
-
-- Database connection errors are logged and retried
-- API rate limit errors trigger exponential backoff
-- Invalid tournament data is skipped with logging
-- Transaction rollback on errors ensures data consistency
-- Cards not found in the cards table during decklist parsing are logged but processing continues
-- Scryfall bulk data download failures are logged with detailed error messages
-
-## Scryfall Bulk Data Updates
-
-Scryfall updates their bulk data files regularly. The `load_cards_from_bulk_data()` function automatically fetches the latest URLs from Scryfall's API.
-
-**Update Frequency Recommendations:**
-- **Weekly**: For active development and testing
-- **Monthly**: For production systems (sufficient for most use cases)
-- **On-demand**: When new sets are released or when you notice missing cards in decklist parsing
-
-The function uses upsert logic (`ON CONFLICT DO UPDATE`), so re-running it is safe and will update existing cards with any changes from Scryfall.
-
-**Performance Notes:**
-- First load: ~5-10 minutes (downloads ~200MB+ of data)
-- Subsequent loads: ~3-5 minutes (updates existing cards)
-- Network speed and database performance affect load times
 
 ## License
 

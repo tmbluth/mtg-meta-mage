@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS load_metadata (
 -- Cards table for storing Scryfall oracle card data
 -- This table stores canonical card information from Scryfall's oracle cards bulk data.
 -- Each card represents a unique oracle card (not a specific printing), identified by card_id.
--- Cards are loaded via load_cards_from_bulk_data() which downloads Scryfall bulk data.
+-- Cards are loaded via ETLPipeline.insert_cards() which downloads Scryfall bulk data.
 -- Fields:
 --   card_id: Scryfall UUID for the oracle card (primary key)
 --   set: Set code for the card (e.g., 'M21', 'MH2')
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS cards (
 -- Deck cards junction table linking decklists to individual cards
 -- This table stores parsed card entries from decklists, linking them to the cards table.
 -- Each row represents a card in a specific decklist with its quantity and section.
--- Cards are parsed from decklist_text using parse_decklist() and stored via parse_and_store_decklist_cards().
+-- Cards are parsed from decklist_text using ETLPipeline.parse_decklist() and stored via insert_deck_cards().
 -- Fields:
 --   decklist_id: Foreign key to decklists table
 --   card_id: Foreign key to cards table (matched by card name)
