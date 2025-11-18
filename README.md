@@ -47,12 +47,7 @@ TOPDECK_API_KEY=your_topdeck_api_key
 
 ## Database Setup
 
-1. Create a PostgreSQL database:
-```bash
-createdb mtg-meta-mage-db
-```
-
-2. Initialize the database schema:
+Create main and test DB and initialize the database schema:
 ```bash
 uv run python src/database/init_db.py
 ```
@@ -69,7 +64,6 @@ The database includes the following tables:
 - **decklists**: Decklist text storage linked to players
 - **match_rounds**: Round information for tournaments
 - **matches**: Individual match results (1v1 only)
-- **load_metadata**: Tracks last successful load timestamp for incremental updates
 
 ### Card Data Tables
 - **cards**: Scryfall oracle card data (card_id, name, oracle_text, rulings, type_line, mana_cost, cmc, color_identity, etc.)
@@ -83,6 +77,9 @@ The database includes the following tables:
   - Cards are parsed from `decklist_text` using `parse_decklist()` function
   - Automatically populated when tournaments are loaded via `parse_and_store_decklist_cards()`
   - Cards not found in the cards table are logged but not stored
+
+# Metadata Tables
+- **load_metadata**: Tracks last successful load timestamp for incremental updates
 
 ## Usage
 
