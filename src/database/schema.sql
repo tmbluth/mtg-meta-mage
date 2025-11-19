@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS decklists (
     player_id TEXT NOT NULL,
     tournament_id TEXT NOT NULL,
     decklist_text TEXT,
-    archetype_id INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (player_id, tournament_id),
     FOREIGN KEY (player_id, tournament_id) REFERENCES players(player_id, tournament_id) ON DELETE CASCADE
@@ -159,9 +158,23 @@ CREATE TABLE IF NOT EXISTS archetypes (
     FOREIGN KEY (decklist_id) REFERENCES decklists(decklist_id) ON DELETE CASCADE
 );
 
+-- Add archetype_id column to decklists (nullable, will be populated later)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'decklists' AND column_name = 'archetype_id') THEN
+        ALTER TABLE decklists ADD COLUMN archetype_id INTEGER;
+    END IF;
+END $$;
+
 -- Add foreign key from decklists to archetypes (references latest classification)
-ALTER TABLE decklists ADD CONSTRAINT fk_decklists_archetype 
-    FOREIGN KEY (archetype_id) REFERENCES archetypes(archetype_id) ON DELETE SET NULL;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_decklists_archetype') THEN
+        ALTER TABLE decklists ADD CONSTRAINT fk_decklists_archetype 
+            FOREIGN KEY (archetype_id) REFERENCES archetypes(archetype_id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_tournaments_format ON tournaments(format);

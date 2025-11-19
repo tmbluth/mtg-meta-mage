@@ -20,6 +20,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def validate_args(args):
+    """
+    Validate that required arguments are provided based on data_type.
+    
+    Args:
+        args: Parsed arguments
+        
+    Raises:
+        ValueError: If required arguments are missing for the given data_type
+    """
+    if not args.data_type:
+        raise ValueError("--data-type is required")
+    
+    if args.data_type == 'tournaments':
+        # Tournaments: mode is required, days only needed for initial mode
+        if args.mode == 'initial' and args.days is None:
+            raise ValueError("--days is required when --data-type=tournaments and --mode=initial")
+    
+    elif args.data_type == 'cards':
+        # Cards: mode is required, batch_size has default so optional
+        pass  # No additional required args beyond mode
+    
+    elif args.data_type == 'archetypes':
+        # Archetypes: mode, model_provider, and prompt_id are required
+        if not args.model_provider:
+            raise ValueError("--model-provider is required when --data-type=archetypes")
+        if not args.prompt_id:
+            raise ValueError("--prompt-id is required when --data-type=archetypes")
+
+
 def load_tournaments(args):
     """Load tournament data from TopDeck"""
     pipeline = TournamentsPipeline()
@@ -62,19 +92,15 @@ def load_cards(args):
 
 def load_archetypes(args):
     """Load archetype classifications using LLM"""
-    import os
+    # Get model provider (validated in validate_args)
+    model_provider = args.model_provider
     
-    # Get model name from environment variable (required)
-    model_provider = getattr(args, 'model_provider', None)
-    if not model_provider:
-        raise ValueError("model_provider is required.")
-    
-    # Get optional model provider override
-    model_provider = getattr(args, 'model_provider', None)
+    # Get prompt_id (validated in validate_args)
+    prompt_id = args.prompt_id
     
     pipeline = ArchetypeClassificationPipeline(
         model_provider=model_provider,
-        prompt_id='archetype_classification_v1'
+        prompt_id=prompt_id
     )
     
     if args.mode == 'initial':
@@ -101,6 +127,7 @@ def main():
     parser.add_argument(
         '--data-type',
         choices=['tournaments', 'cards', 'archetypes'],
+        required=True,
         help='Type of data to load: tournaments (TopDeck), cards (Scryfall), or archetypes (LLM classification)'
     )
     parser.add_argument(
@@ -112,8 +139,8 @@ def main():
     parser.add_argument(
         '--days',
         type=int,
-        default=180,
-        help='Number of days back for initial tournament load (default: 180). Only applies when loading tournaments.'
+        default=None,
+        help='Number of days back for initial tournament load (required for tournaments/initial mode, default: 180).'
     )
     parser.add_argument(
         '--batch-size',
@@ -125,15 +152,21 @@ def main():
         '--model-provider',
         choices=['azure_openai', 'anthropic', 'openai', 'aws_bedrock'],
         type=str,
-        help='LLM model provider for archetype classification'
+        help='LLM model provider for archetype classification (required for archetypes)'
     )
     parser.add_argument(
         '--prompt-id',
         type=str,
-        help='Prompt version identifier for archetype classification'
+        help='Prompt version identifier for archetype classification (required for archetypes)'
     )
     
     args = parser.parse_args()
+    
+    # Validate arguments based on data_type
+    try:
+        validate_args(args)
+    except ValueError as e:
+        parser.error(str(e))
     
     try:
         DatabaseConnection.initialize_pool()
@@ -146,8 +179,8 @@ def main():
         elif args.data_type == 'tournaments':
             result = load_tournaments(args)
         elif args.data_type == 'archetypes':
-            if args.batch_size > 100:
-                args.batch_size = 100  # Max batch size for LLM classification
+            if args.batch_size > 50:
+                args.batch_size = 50  # Max batch size for LLM classification
             result = load_archetypes(args)
         
         # Final summary

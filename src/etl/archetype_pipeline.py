@@ -320,7 +320,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
             )
         
         # Get LLM client
-        agent = get_llm_client(self.model_name, self.model_provider)
+        client = get_llm_client(self.model_name, self.model_provider)
         
         # Format prompt
         prompt = self.format_classification_prompt(cards, format_name, instructions)
@@ -332,7 +332,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
         for attempt in range(max_retries + 1):
             try:
                 # Call LLM
-                response = agent.run(prompt)
+                response = client.run(prompt)
                 response_text = response.text
                 
                 # Parse and validate response

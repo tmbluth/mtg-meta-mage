@@ -1,16 +1,59 @@
-"""LLM client for using strands-agents"""
+"""LLM client for using Langchain ecosystem"""
 
 import os
 import logging
-from typing import Optional
+from typing import Any
 
-from strands_agents import Agent
-from strands_agents.models import BedrockLLM, OpenAILLM, AnthropicLLM
+from langchain_openai import ChatOpenAI, AzureChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_aws import ChatBedrock
+from langchain_core.language_models.chat_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
 
-def get_llm_client(model_name: str, model_provider: str) -> Agent:
+class LLMClient:
+    """Wrapper for Langchain chat models that provides a simple interface"""
+    
+    def __init__(self, model: BaseChatModel, system_instruction: str):
+        """
+        Initialize LLM client with a Langchain chat model
+        
+        Args:
+            model: Langchain chat model instance
+            system_instruction: System instruction to prepend to queries
+        """
+        self.model = model
+        self.system_instruction = system_instruction
+    
+    def run(self, prompt: str) -> Any:
+        """
+        Run the LLM with the given prompt
+        
+        Args:
+            prompt: User prompt to send to LLM
+            
+        Returns:
+            Response object with 'text' attribute containing the LLM response
+        """
+        from langchain_core.messages import HumanMessage, SystemMessage
+        
+        messages = [
+            SystemMessage(content=self.system_instruction),
+            HumanMessage(content=prompt)
+        ]
+        
+        response = self.model.invoke(messages)
+        
+        # Create a simple response object with text attribute
+        class Response:
+            def __init__(self, content):
+                self.text = content
+        
+        return Response(response.content)
+
+
+def get_llm_client(model_name: str, model_provider: str) -> LLMClient:
     """
     Get LLM client based on model name and provider configuration.
     
@@ -22,15 +65,15 @@ def get_llm_client(model_name: str, model_provider: str) -> Agent:
     
     Args:
         model_name: Name or identifier of the LLM model
-        model_provider: Optional explicit provider (azure_openai, anthropic, openai, aws_bedrock)
-                       If not provided, infers from model_name
+        model_provider: Required to differentiate between providers with the same models (azure_openai, anthropic, openai, aws_bedrock)
         
     Returns:
-        Configured Agent instance
+        Configured LLMClient instance
         
     Raises:
         ValueError: If model configuration is invalid
     """
+    
     # Determine provider
     provider = model_provider.lower()
     
@@ -38,30 +81,41 @@ def get_llm_client(model_name: str, model_provider: str) -> Agent:
         api_key = os.getenv('AZURE_OPENAI_API_KEY')
         endpoint_template = os.getenv('AZURE_OPENAI_LLM_ENDPOINT')
         api_version = os.getenv('AZURE_OPENAI_API_VERSION')
-        azure_api_endpoint = os.getenv('AZURE_API_ENDPOINT')
+        azure_openai_api_version = os.getenv('AZURE_OPENAI_API_VERSION')
         
         if not api_key:
             raise ValueError("AZURE_OPENAI_API_KEY environment variable must be set")
         
         if endpoint_template:
-            # Construct endpoint from template: LLM_MODEL goes in first {}, AZURE_API_ENDPOINT in second {}
-            if not model_name or not azure_api_endpoint:
+            # Construct endpoint from template: LLM_MODEL goes in first {}, azure_openai_api_version in second {}
+            if not model_name or not azure_openai_api_version:
                 raise ValueError(
-                    "LLM_MODEL and AZURE_API_ENDPOINT environment variables must be set "
+                    "LLM_MODEL and AZURE_OPENAI_API_VERSION environment variables must be set "
                     "when using AZURE_OPENAI_LLM_ENDPOINT template"
                 )
-            endpoint = endpoint_template.format(model_name, azure_api_endpoint)
+            endpoint = endpoint_template.format(model_name, azure_openai_api_version)
         else:
-                raise ValueError(
-                    "AZURE_OPENAI_LLM_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_API_VERSION environment variables must be set"
-                )
+            raise ValueError(
+                "AZURE_OPENAI_LLM_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_API_VERSION environment variables must be set"
+            )
         
-        model = OpenAILLM(
-            model=model_name,
+        model = AzureChatOpenAI(
+            azure_deployment=model_name,
             temperature=0.1,
             api_key=api_key,
-            base_url=endpoint,
+            azure_endpoint=endpoint,
             api_version=api_version
+        )
+    
+    elif provider == 'openai':
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable not set")
+        
+        model = ChatOpenAI(
+            model=model_name,
+            temperature=0.1,
+            api_key=api_key
         )
     
     elif provider == 'anthropic':
@@ -69,7 +123,7 @@ def get_llm_client(model_name: str, model_provider: str) -> Agent:
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable not set")
         
-        model = AnthropicLLM(
+        model = ChatAnthropic(
             model=model_name,
             temperature=0.1,
             api_key=api_key
@@ -77,10 +131,10 @@ def get_llm_client(model_name: str, model_provider: str) -> Agent:
     
     elif provider == 'aws_bedrock':
         region = os.getenv('AWS_REGION', 'us-east-1')
-        model = BedrockLLM(
-            model=model_name,
-            temperature=0.1,
-            region=region
+        model = ChatBedrock(
+            model_id=model_name,
+            model_kwargs={"temperature": 0.1},
+            region_name=region
         )
     
     else:
@@ -89,12 +143,11 @@ def get_llm_client(model_name: str, model_provider: str) -> Agent:
             "openai, azure_openai, anthropic, aws_bedrock"
         )
     
-    # Create agent with the model
-    agent = Agent(
-        name="archetype_classifier",
+    # Create client with the model
+    client = LLMClient(
         model=model,
-        instruction="You are an expert Magic: The Gathering deck analyst. Classify decklists into archetypes based on card synergies and strategies."
+        system_instruction="You are an expert Magic: The Gathering deck analyst. Classify decklists into archetypes based on card synergies and strategies."
     )
     
-    return agent
+    return client
 
