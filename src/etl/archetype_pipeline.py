@@ -94,7 +94,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
                         d.tournament_id
                     FROM decklists d
                     JOIN tournaments t ON d.tournament_id = t.tournament_id
-                    WHERE d.archetype_id IS NULL
+                    WHERE d.archetype_group_id IS NULL
                     ORDER BY d.decklist_id
                 """)
                 
@@ -374,7 +374,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
         mainboard_cards: List[Dict[str, Any]]
     ) -> Optional[int]:
         """
-        Classify a decklist and store the result.
+        Classify a decklist and store the result in archetype_groups and archetype_classifications.
         
         Args:
             decklist_id: ID of the decklist being classified
@@ -382,7 +382,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
             mainboard_cards: List of enriched mainboard cards
             
         Returns:
-            archetype_id on success, None on failure
+            archetype_group_id on success, None on failure
         """
         # Validate minimum card data
         if not mainboard_cards:
@@ -416,31 +416,46 @@ class ArchetypeClassificationPipeline(BasePipeline):
         # Store classification in database
         try:
             with DatabaseConnection.get_cursor(commit=True) as cur:
+                # Get or create archetype group
                 cur.execute("""
-                    INSERT INTO archetypes (
-                        decklist_id, format, main_title, color_identity, strategy,
-                        archetype_confidence, llm_model, prompt_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING archetype_id
+                    INSERT INTO archetype_groups (format, main_title, strategy, color_identity)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (format, main_title, strategy, color_identity) 
+                    DO UPDATE SET archetype_group_id = archetype_groups.archetype_group_id
+                    RETURNING archetype_group_id
                 """, (
-                    decklist_id,
                     format_name,
                     classification.main_title,
-                    classification.color_identity,
                     classification.strategy.value,
+                    classification.color_identity
+                ))
+                
+                archetype_group_id = cur.fetchone()[0]
+                
+                # Insert classification event
+                cur.execute("""
+                    INSERT INTO archetype_classifications (
+                        decklist_id, archetype_group_id, archetype_confidence,
+                        llm_model, prompt_id
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    RETURNING classification_id
+                """, (
+                    decklist_id,
+                    archetype_group_id,
                     classification.confidence,
                     self.model_name,
                     self.prompt_id
                 ))
                 
-                archetype_id = cur.fetchone()[0]
+                classification_id = cur.fetchone()[0]
                 
                 logger.info(
                     f"Classified decklist {decklist_id} as {classification.main_title} "
-                    f"(archetype_id: {archetype_id}, confidence: {classification.confidence:.2f})"
+                    f"(group_id: {archetype_group_id}, classification_id: {classification_id}, "
+                    f"confidence: {classification.confidence:.2f})"
                 )
                 
-                return archetype_id
+                return archetype_group_id
                 
         except Exception as e:
             logger.error(
@@ -452,14 +467,14 @@ class ArchetypeClassificationPipeline(BasePipeline):
     def update_decklist_archetype(
         self,
         decklist_id: int,
-        archetype_id: Optional[int]
+        archetype_group_id: Optional[int]
     ) -> bool:
         """
-        Update decklist's archetype_id reference to latest classification.
+        Update decklist's archetype_group_id reference to current archetype.
         
         Args:
             decklist_id: ID of the decklist
-            archetype_id: ID of the archetype (or None to clear)
+            archetype_group_id: ID of the archetype group (or None to clear)
             
         Returns:
             True on success, False on failure
@@ -468,18 +483,18 @@ class ArchetypeClassificationPipeline(BasePipeline):
             with DatabaseConnection.get_cursor(commit=True) as cur:
                 cur.execute("""
                     UPDATE decklists
-                    SET archetype_id = %s
+                    SET archetype_group_id = %s
                     WHERE decklist_id = %s
-                """, (archetype_id, decklist_id))
+                """, (archetype_group_id, decklist_id))
                 
                 logger.debug(
-                    f"Updated decklist {decklist_id} archetype_id to {archetype_id}"
+                    f"Updated decklist {decklist_id} archetype_group_id to {archetype_group_id}"
                 )
                 return True
                 
         except Exception as e:
             logger.error(
-                f"Error updating decklist {decklist_id} archetype: {e}",
+                f"Error updating decklist {decklist_id} archetype group: {e}",
                 exc_info=True
             )
             return False
@@ -546,13 +561,13 @@ class ArchetypeClassificationPipeline(BasePipeline):
                             continue
                         
                         # Classify the decklist
-                        archetype_id = self.insert_archetype(
+                        archetype_group_id = self.insert_archetype(
                             decklist_id, format_name, cards
                         )
                         
-                        if archetype_id:
+                        if archetype_group_id:
                             # Update decklist reference
-                            self.update_decklist_archetype(decklist_id, archetype_id)
+                            self.update_decklist_archetype(decklist_id, archetype_group_id)
                             classified += 1
                         else:
                             errors += 1
@@ -675,13 +690,13 @@ class ArchetypeClassificationPipeline(BasePipeline):
                             continue
                         
                         # Classify the decklist
-                        archetype_id = self.insert_archetype(
+                        archetype_group_id = self.insert_archetype(
                             decklist_id, format_name, cards
                         )
                         
-                        if archetype_id:
+                        if archetype_group_id:
                             # Update decklist reference
-                            self.update_decklist_archetype(decklist_id, archetype_id)
+                            self.update_decklist_archetype(decklist_id, archetype_group_id)
                             classified += 1
                         else:
                             errors += 1

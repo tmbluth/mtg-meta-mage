@@ -1,11 +1,12 @@
 # Implementation Tasks
 
 ## 1. Database Schema
-- [x] 1.1 Add `archetypes` table to `schema.sql` with all fields (archetype_id, decklist_id, format, main_title, color_identity, strategy, archetype_confidence, llm_model, prompt_id, classified_at)
-- [x] 1.2 Add `archetype_id` foreign key column to `decklists` table
-- [x] 1.3 Create indexes on `archetypes.decklist_id`, `archetypes.format`, and `decklists.archetype_id`
-- [x] 1.4 Create migration script to apply schema changes to existing databases
-- [x] 1.5 Write unit tests for schema validation (table exists, columns correct, constraints enforced)
+- [x] 1.1 Add `archetype_groups` table to `schema.sql` with fields (archetype_group_id, format, main_title, color_identity, strategy, created_at) and UNIQUE constraint
+- [x] 1.2 Add `archetype_classifications` table to `schema.sql` with fields (classification_id, decklist_id, archetype_group_id, archetype_confidence, llm_model, prompt_id, classified_at)
+- [x] 1.3 Add `archetype_group_id` foreign key column to `decklists` table
+- [x] 1.4 Create indexes on `archetype_groups.format`, `archetype_classifications.decklist_id`, `archetype_classifications.archetype_group_id`, and `decklists.archetype_group_id`
+- [x] 1.5 Create migration script to apply schema changes to existing databases
+- [x] 1.6 Write unit tests for schema validation (tables exist, columns correct, constraints enforced, UNIQUE constraint works)
 
 ## 2. LLM Client Integration
 - [x] 2.1 Write unit tests for prompt generation with mock card data
@@ -20,16 +21,17 @@
 - [x] 3.1 Write unit tests for classification logic with mocked LLM responses
 - [x] 3.2 Write unit tests for database query methods with test fixtures
 - [x] 3.3 Create `src/etl/archetype_pipeline.py` with `ArchetypeClassificationPipeline` class extending `BasePipeline`
-- [x] 3.4 Implement `get_unclassified_decklists()` method (query decklists without archetype_id)
+- [x] 3.4 Implement `get_unclassified_decklists()` method (query decklists without archetype_group_id)
 - [x] 3.5 Implement `get_decklist_mainboard_cards()` method (join deck_cards + cards for mainboard)
-- [x] 3.6 Implement `insert_archetype()` method (call LLM, parse response, store archetype)
-- [x] 3.7 Implement `update_decklist_archetype()` method (update decklists.archetype_id to latest)
-- [x] 3.8 Implement `load_initial()` method following BasePipeline interface (classify all unclassified or classified decks, return standardized result dict)
-- [x] 3.9 Implement `load_incremental()` method following BasePipeline interface (classify decks from tournaments since last classification, return standardized result dict)
-- [x] 3.10 Add batch processing with configurable batch size
-- [x] 3.11 Add progress logging (X/Y decks classified, success/failure counts)
-- [x] 3.12 Use `update_load_metadata()` from `src/etl/utils.py` with `data_type='archetypes'`
-- [x] 3.13 Use `get_last_load_timestamp()` from `src/etl/utils.py` with `data_type='archetypes'`
+- [x] 3.6 Implement `get_or_create_archetype_group()` method (insert with ON CONFLICT to get/create archetype_group_id)
+- [x] 3.7 Implement `insert_classification()` method (call LLM, parse response, get/create group, store classification event)
+- [x] 3.8 Implement `update_decklist_archetype_group()` method (update decklists.archetype_group_id)
+- [x] 3.9 Implement `load_initial()` method following BasePipeline interface (classify all decklists, create groups and classifications, return standardized result dict)
+- [x] 3.10 Implement `load_incremental()` method following BasePipeline interface (classify decks from tournaments since last classification, return standardized result dict)
+- [x] 3.11 Add batch processing with configurable batch size
+- [x] 3.12 Add progress logging (X/Y decks classified, success/failure counts)
+- [x] 3.13 Use `update_load_metadata()` from `src/etl/utils.py` with `data_type='archetypes'`
+- [x] 3.14 Use `get_last_load_timestamp()` from `src/etl/utils.py` with `data_type='archetypes'`
 
 ## 4. CLI Integration
 - [x] 4.1 Add `archetypes` option to `--data-type` argument in `src/etl/main.py`
@@ -60,9 +62,9 @@
 - [x] 7.5 Provide logging throughout code
 
 ## 8. Testing
-- [x] 8.1 Create `tests/integration/test_e2e_archetype_classification.py` that tests `src/etl/api_clients/llm_client` and `src/etl/archetype_pipeline.py` (llm_client, initial/incremental, confidence scoring, low confidence filtering, archetype_id updates on decklists table)
+- [x] 8.1 Create `tests/integration/test_e2e_archetype_classification.py` that tests `src/etl/api_clients/llm_client` and `src/etl/archetype_pipeline.py` (llm_client, initial/incremental, confidence scoring, low confidence filtering, archetype_group_id updates on decklists table)
 - [x] 8.2 Create `tests/integration/test_llm_client.py` with real small LLM calls for only AzureOpenAI (DO NOT test Anthropic, OpenAI, or AWS Bedrock)
-- [x] 8.3 Test end-to-end archetype classification with real database and mock LLM
+- [x] 8.3 Test end-to-end archetype classification with real database and mock LLM (verify archetype_groups reuse and archetype_classifications history)
 - [x] 8.4 Run unit tests: `pytest tests/unit/ -m unit -v` (148/158 passing - 93.7%)
 - [x] 8.5 Run integration tests: `pytest tests/integration/ -m integration -v` (require Azure OpenAI credentials to run)
 - [x] 8.6 Fix any linter errors: `pylint src/etl/archetype_pipeline.py src/etl/api_clients/llm_client.py` (no errors)

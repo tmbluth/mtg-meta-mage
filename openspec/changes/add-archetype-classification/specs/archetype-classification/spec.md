@@ -2,35 +2,60 @@
 
 ## ADDED Requirements
 
-### Requirement: Archetypes Table Storage
-The system SHALL store archetype classifications in an `archetypes` table with the following fields:
-- `archetype_id` (SERIAL, PRIMARY KEY): Unique identifier for each classification
-- `decklist_id` (INTEGER, FOREIGN KEY): References `decklists.decklist_id`
+### Requirement: Archetype Groups Storage
+The system SHALL store unique archetype definitions in an `archetype_groups` table with the following fields:
+- `archetype_group_id` (SERIAL, PRIMARY KEY): Unique identifier for each archetype definition
 - `format` (TEXT): Tournament format (e.g., "Modern", "Standard")
 - `main_title` (TEXT): Archetype name based on key cards/themes (e.g., "amulet_titan", "elves", "blink")
 - `color_identity` (TEXT): Human-readable color description (e.g., "dimir", "jeskai", "colorless")
 - `strategy` (TEXT): One of "aggro", "midrange", "control", "ramp", or "combo" (enforced by CHECK constraint)
+- `created_at` (TIMESTAMP): Timestamp when archetype group was first created
+- UNIQUE constraint on (format, main_title, strategy, color_identity)
+
+#### Scenario: Create Unique Archetype Group
+- **WHEN** a decklist is classified with archetype metadata (format, main_title, strategy, color_identity)
+- **AND** no matching archetype group exists in the database
+- **THEN** a new row is inserted into `archetype_groups` with a new `archetype_group_id`
+- **AND** the `archetype_group_id` is returned
+
+#### Scenario: Reuse Existing Archetype Group
+- **WHEN** a decklist is classified with archetype metadata
+- **AND** a matching archetype group already exists (same format, main_title, strategy, color_identity)
+- **THEN** the existing `archetype_group_id` is returned
+- **AND** no new row is created in `archetype_groups`
+
+#### Scenario: Enforce Strategy Constraint
+- **WHEN** an archetype group is created with an invalid strategy value
+- **THEN** the database rejects the insert with a CHECK constraint violation
+- **AND** only "aggro", "midrange", "control", "ramp", or "combo" are accepted
+
+#### Scenario: Enforce Uniqueness Constraint
+- **WHEN** attempting to insert a duplicate archetype group (same format, main_title, strategy, color_identity)
+- **THEN** the database rejects the insert with a UNIQUE constraint violation
+- **OR** an ON CONFLICT clause returns the existing `archetype_group_id`
+
+### Requirement: Archetype Classifications Storage
+The system SHALL store classification events in an `archetype_classifications` table with the following fields:
+- `classification_id` (SERIAL, PRIMARY KEY): Unique identifier for each classification event
+- `decklist_id` (INTEGER, FOREIGN KEY): References `decklists.decklist_id`
+- `archetype_group_id` (INTEGER, FOREIGN KEY): References `archetype_groups.archetype_group_id`
 - `archetype_confidence` (FLOAT): Confidence score from 0 to 1 (enforced by CHECK constraint)
 - `llm_model` (TEXT): LLM model used for classification (e.g., "gpt-4o", "claude-3-5-sonnet")
 - `prompt_id` (TEXT): Version identifier for prompt used (e.g., "archetype_classification_v1")
 - `classified_at` (TIMESTAMP): Timestamp when classification was performed
 
-#### Scenario: Store New Archetype Classification
+#### Scenario: Store New Classification Event
 - **WHEN** a decklist is classified by the LLM
-- **AND** the LLM returns archetype metadata (main_title, color_identity, strategy, confidence)
-- **THEN** a new row is inserted into the `archetypes` table with all fields populated
-- **AND** the `archetype_id` is returned for updating the decklist
+- **AND** the LLM returns archetype metadata with confidence score
+- **THEN** a new row is inserted into `archetype_classifications` with all fields populated
+- **AND** the row references both the `decklist_id` and `archetype_group_id`
+- **AND** the `classification_id` is returned
 
 #### Scenario: Support Multiple Classifications Per Deck
 - **WHEN** a decklist is reclassified (e.g., with a new prompt or model)
-- **THEN** a new row is inserted into the `archetypes` table with a new `archetype_id`
+- **THEN** a new row is inserted into `archetype_classifications` with a new `classification_id`
 - **AND** the previous classification remains in the table for historical tracking
-- **AND** the `decklists.archetype_id` is updated to reference the latest classification
-
-#### Scenario: Enforce Strategy Constraint
-- **WHEN** an archetype classification is stored with an invalid strategy value
-- **THEN** the database rejects the insert with a CHECK constraint violation
-- **AND** only "aggro", "midrange", "control", "ramp", or "combo" are accepted
+- **AND** the `decklists.archetype_group_id` is updated to reference the latest archetype group
 
 #### Scenario: Enforce Confidence Range
 - **WHEN** an archetype classification is stored with a confidence score < 0 or > 1
@@ -38,12 +63,13 @@ The system SHALL store archetype classifications in an `archetypes` table with t
 - **AND** only values between 0 and 1 (inclusive) are accepted
 
 ### Requirement: Decklist Archetype Linking
-The system SHALL link decklists to their latest archetype classification via a foreign key.
+The system SHALL link decklists to their current archetype via an `archetype_group_id` foreign key.
 
-#### Scenario: Handle Archetype Deletion
-- **WHEN** an archetype row is deleted from the `archetypes` table
-- **THEN** the corresponding `decklists.archetype_id` is set to NULL (ON DELETE SET NULL)
+#### Scenario: Handle Archetype Group Deletion
+- **WHEN** an archetype group row is deleted from the `archetype_groups` table
+- **THEN** the corresponding `decklists.archetype_group_id` is set to NULL (ON DELETE SET NULL)
 - **AND** the decklist row is not deleted
+- **AND** related classification rows in `archetype_classifications` are deleted (ON DELETE CASCADE)
 
 ### Requirement: Mainboard Card Enrichment
 The system SHALL extract and enrich mainboard card data from decklists for LLM analysis.
@@ -93,6 +119,7 @@ The system SHALL use LLM APIs to classify decklists into archetypes based on mai
 - **THEN** the system stores the `llm_model` used (e.g., "gpt-4o-mini")
 - **AND** stores the `prompt_id` version identifier
 - **AND** records the `classified_at` timestamp
+- **AND** links the classification to both `decklist_id` and `archetype_group_id`
 
 ### Requirement: Archetype Classification Pipeline
 The system SHALL provide an independent ETL pipeline for archetype classification that runs after tournament and card data loads, following the `BasePipeline` abstract class pattern.
@@ -107,10 +134,11 @@ The system SHALL provide an independent ETL pipeline for archetype classificatio
 
 #### Scenario: Run Initial Archetype Classification
 - **WHEN** the archetype classification pipeline runs with `--mode initial` flag
-- **THEN** the system queries all decklists (regardless of existing `archetype_id`)
-- **AND** creates new archetype classifications for each decklist
-- **AND** updates `decklists.archetype_id` to reference the new classifications
-- **AND** preserves previous archetype rows for historical tracking
+- **THEN** the system queries all decklists (regardless of existing `archetype_group_id`)
+- **AND** creates new classification events for each decklist in `archetype_classifications`
+- **AND** creates or reuses archetype groups in `archetype_groups` based on unique combinations
+- **AND** updates `decklists.archetype_group_id` to reference the archetype group
+- **AND** preserves previous classification rows for historical tracking
 - **AND** logs progress and completion stats (X/Y decks classified, success/failure counts)
 - **AND** records the load timestamp in `load_metadata` table
 - **AND** returns a standardized result dictionary with keys: `success` (bool), `objects_loaded` (int), `objects_processed` (int), `errors` (int)
@@ -132,8 +160,9 @@ The system SHALL provide CLI commands for archetype classification with mode and
 
 #### Scenario: Force Reclassification
 - **WHEN** the user runs `python -m src.etl.main --data-type archetypes --force-reclassify`
-- **THEN** the system reclassifies all decklists (creates new archetype rows)
-- **AND** updates decklists to reference the new archetype classifications
+- **THEN** the system reclassifies all decklists (creates new classification events)
+- **AND** creates or reuses archetype groups based on LLM results
+- **AND** updates `decklists.archetype_group_id` to reference the new archetype groups
 - **AND** logs progress and completion statistics
 
 #### Scenario: Configure Batch Size

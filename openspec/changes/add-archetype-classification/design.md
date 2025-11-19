@@ -53,36 +53,50 @@ The system currently ingests tournament data (tournaments, players, decklists, m
 - Allow model selection via environment variable or CLI parameter
 
 ### Decision 2: Archetype Schema Design
-**What:** Create `archetypes` table with versioned classifications linked to `decklists`.
+**What:** Create two-table normalized design with `archetype_groups` for unique archetype definitions and `archetype_classifications` for historical classification events.
 
 **Why:**
-- Supports multiple classifications per deck (improving over time with better prompts/models)
-- Preserves metadata for reproducibility and debugging
-- Enables decklists to reference latest archetype without complex queries
+- **Normalized design:** Stores unique archetype definitions (format, main_title, strategy, color_identity) once in `archetype_groups`, eliminating data duplication
+- **Database-enforced uniqueness:** UNIQUE constraint ensures same archetype gets same group_id
+- **Historical tracking:** `archetype_classifications` preserves all classification attempts with confidence, model, and prompt metadata
+- **Simple queries:** Decklists reference `archetype_group_id` directly for current archetype without complex joins
+- **Clean separation:** "What is this archetype?" (groups) vs "When/how was this classified?" (classifications)
 
 **Schema:**
 ```sql
-CREATE TABLE archetypes (
-    archetype_id SERIAL PRIMARY KEY,
-    decklist_id INTEGER NOT NULL,
+-- Unique archetype definitions
+CREATE TABLE archetype_groups (
+    archetype_group_id SERIAL PRIMARY KEY,
     format TEXT NOT NULL,
     main_title TEXT NOT NULL,
     color_identity TEXT,
     strategy TEXT NOT NULL CHECK (strategy IN ('aggro', 'midrange', 'control', 'ramp', 'combo')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (format, main_title, strategy, color_identity)
+);
+
+-- Historical classification events
+CREATE TABLE archetype_classifications (
+    classification_id SERIAL PRIMARY KEY,
+    decklist_id INTEGER NOT NULL,
+    archetype_group_id INTEGER NOT NULL,
     archetype_confidence FLOAT NOT NULL CHECK (archetype_confidence >= 0 AND archetype_confidence <= 1),
     llm_model TEXT NOT NULL,
     prompt_id TEXT NOT NULL,
     classified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (decklist_id) REFERENCES decklists(decklist_id) ON DELETE CASCADE
+    FOREIGN KEY (decklist_id) REFERENCES decklists(decklist_id) ON DELETE CASCADE,
+    FOREIGN KEY (archetype_group_id) REFERENCES archetype_groups(archetype_group_id) ON DELETE CASCADE
 );
 
-ALTER TABLE decklists ADD COLUMN archetype_id INTEGER REFERENCES archetypes(archetype_id) ON DELETE SET NULL;
+-- Link decklists to current archetype
+ALTER TABLE decklists ADD COLUMN archetype_group_id INTEGER 
+    REFERENCES archetype_groups(archetype_group_id) ON DELETE SET NULL;
 ```
 
 **Alternatives Considered:**
-- Single archetype per deck - rejected to support reclassification over time
+- Single table with group_id column - rejected due to data duplication (storing format, main_title, strategy, color_identity in every classification row)
 - Versioning via JSONB column - rejected for schema clarity and queryability
-- Separate archetype dictionary table - rejected as premature optimization
+- No historical tracking - rejected as we want to track confidence changes and reclassification patterns
 
 ### Decision 3: ETL Pipeline Independence
 **What:** Archetype classification runs as a separate ETL step after tournament and card data loads, following the `BasePipeline` pattern.

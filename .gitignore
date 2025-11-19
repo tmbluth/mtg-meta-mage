@@ -19,3 +19,5 @@ env/
 .cursor/
 
 src/data/
+
+src/database/nuke_and_restart.sh
