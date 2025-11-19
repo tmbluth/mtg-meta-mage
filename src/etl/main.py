@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.etl.tournaments_pipeline import TournamentsPipeline
 from src.etl.cards_pipeline import CardsPipeline
+from src.etl.archetype_pipeline import ArchetypeClassificationPipeline
 from src.database.connection import DatabaseConnection
 
 logging.basicConfig(
@@ -59,6 +60,39 @@ def load_cards(args):
     return result
 
 
+def load_archetypes(args):
+    """Load archetype classifications using LLM"""
+    import os
+    
+    # Get model name from environment variable (required)
+    model_provider = getattr(args, 'model_provider', None)
+    if not model_provider:
+        raise ValueError("model_provider is required.")
+    
+    # Get optional model provider override
+    model_provider = getattr(args, 'model_provider', None)
+    
+    pipeline = ArchetypeClassificationPipeline(
+        model_provider=model_provider,
+        prompt_id='archetype_classification_v1'
+    )
+    
+    if args.mode == 'initial':
+        logger.info("Starting initial archetype classification")
+        result = pipeline.load_initial(batch_size=args.batch_size)
+    else:
+        logger.info("Starting incremental archetype classification")
+        result = pipeline.load_incremental(batch_size=args.batch_size)
+    
+    logger.info(f"Archetype classification complete:")
+    logger.info(f"  - Objects loaded: {result['objects_loaded']}")
+    logger.info(f"  - Objects processed: {result['objects_processed']}")
+    logger.info(f"  - Errors: {result['errors']}")
+    logger.info(f"  - Success: {result['success']}")
+    
+    return result
+
+
 def main():
     """Main entry point for loading data"""
     parser = argparse.ArgumentParser(
@@ -66,8 +100,8 @@ def main():
     )
     parser.add_argument(
         '--data-type',
-        choices=['tournaments', 'cards'],
-        help='Type of data to load: tournaments (TopDeck) or cards (Scryfall)'
+        choices=['tournaments', 'cards', 'archetypes'],
+        help='Type of data to load: tournaments (TopDeck), cards (Scryfall), or archetypes (LLM classification)'
     )
     parser.add_argument(
         '--mode',
@@ -85,7 +119,18 @@ def main():
         '--batch-size',
         type=int,
         default=1000,
-        help='Batch size for card data loading (default: 1000). Only applies when loading cards.'
+        help='Batch size for data loading (default: 1000 for cards, 50 for archetypes).'
+    )
+    parser.add_argument(
+        '--model-provider',
+        choices=['azure_openai', 'anthropic', 'openai', 'aws_bedrock'],
+        type=str,
+        help='LLM model provider for archetype classification'
+    )
+    parser.add_argument(
+        '--prompt-id',
+        type=str,
+        help='Prompt version identifier for archetype classification'
     )
     
     args = parser.parse_args()
@@ -100,6 +145,10 @@ def main():
             result = load_cards(args)
         elif args.data_type == 'tournaments':
             result = load_tournaments(args)
+        elif args.data_type == 'archetypes':
+            if args.batch_size > 100:
+                args.batch_size = 100  # Max batch size for LLM classification
+            result = load_archetypes(args)
         
         # Final summary
         if result:
