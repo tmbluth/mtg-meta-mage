@@ -217,42 +217,32 @@ def parse_decklist(decklist_text: str) -> List[Dict[str, any]]:
     return cards
 
 
-def get_last_load_timestamp(load_type: str = 'incremental') -> Optional[int]:
+def get_last_load_timestamp(data_type: str) -> Optional[int]:
     """
-    Get the timestamp of the last successful load for a specific load type
+    Get the timestamp of the last successful load for a specific data type
     
     Args:
-        load_type: Type of load ('tournaments', 'cards', or 'incremental' for backward compatibility)
+        data_type: Type of data ('tournaments', 'cards', 'archetypes')
     
     Returns:
         Unix timestamp of last load, or None if no previous load
     """
     try:
         with DatabaseConnection.get_cursor() as cur:
-            # For tournaments, also check 'incremental' for backward compatibility
-            if load_type == 'tournaments':
-                cur.execute(
-                    """
-                    SELECT last_load_timestamp FROM load_metadata 
-                    WHERE load_type IN ('tournaments', 'incremental')
-                    ORDER BY id DESC LIMIT 1
-                    """
-                )
-            else:
-                cur.execute(
-                    """
-                    SELECT last_load_timestamp FROM load_metadata 
-                    WHERE load_type = %s 
-                    ORDER BY id DESC LIMIT 1
-                    """,
-                    (load_type,)
-                )
+            cur.execute(
+                """
+                SELECT last_load_timestamp FROM load_metadata 
+                WHERE data_type = %s 
+                ORDER BY id DESC LIMIT 1
+                """,
+                (data_type,)
+            )
             result = cur.fetchone()
             if result:
                 return result[0]
             return None
     except Exception as e:
-        logger.error(f"Error getting last load timestamp for {load_type}: {e}")
+        logger.error(f"Error getting last load timestamp for {data_type}: {e}")
         return None
 
 

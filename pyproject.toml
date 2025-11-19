@@ -10,6 +10,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.5.0",
     "python-Levenshtein>=0.25.0",
+    "strands-agents>=1.17.0",
 ]
 
 [build-system]

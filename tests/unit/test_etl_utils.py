@@ -327,10 +327,10 @@ def test_get_last_load_timestamp_tournaments():
         
         assert result == 1234567890
         mock_cursor.execute.assert_called_once()
-        # Verify it checks both 'tournaments' and 'incremental'
-        call_args = mock_cursor.execute.call_args[0][0]
-        assert 'tournaments' in call_args.lower()
-        assert 'incremental' in call_args.lower()
+        # Verify it queries by data_type
+        call_args = mock_cursor.execute.call_args
+        assert 'data_type' in call_args[0][0].lower()
+        assert call_args[0][1] == ('tournaments',)
 
 
 def test_get_last_load_timestamp_cards():
@@ -346,8 +346,9 @@ def test_get_last_load_timestamp_cards():
         
         assert result == 1234567890
         mock_cursor.execute.assert_called_once()
-        # Verify it uses the load_type parameter
+        # Verify it queries by data_type
         call_args = mock_cursor.execute.call_args
+        assert 'data_type' in call_args[0][0].lower()
         assert call_args[0][1] == ('cards',)
 
 
@@ -375,8 +376,8 @@ def test_get_last_load_timestamp_database_error():
         assert result is None
 
 
-def test_get_last_load_timestamp_default_parameter():
-    """Test that default parameter works (backward compatibility)"""
+def test_get_last_load_timestamp_archetypes():
+    """Test getting last load timestamp for archetypes"""
     mock_cursor = Mock()
     mock_cursor.fetchone.return_value = (1234567890,)
     
@@ -384,12 +385,14 @@ def test_get_last_load_timestamp_default_parameter():
         mock_get_cursor.return_value.__enter__.return_value = mock_cursor
         mock_get_cursor.return_value.__exit__.return_value = None
         
-        result = get_last_load_timestamp()
+        result = get_last_load_timestamp('archetypes')
         
         assert result == 1234567890
-        # Should use the default 'incremental' parameter
+        mock_cursor.execute.assert_called_once()
+        # Verify it queries by data_type
         call_args = mock_cursor.execute.call_args
-        assert call_args[0][1] == ('incremental',)
+        assert 'data_type' in call_args[0][0].lower()
+        assert call_args[0][1] == ('archetypes',)
 
 
 def test_update_load_metadata_success():
