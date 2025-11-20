@@ -163,7 +163,7 @@ class TestCardsPipeline:
         # Verify load metadata was created
         with DatabaseConnection.get_cursor() as cur:
             cur.execute(
-                "SELECT last_load_timestamp, objects_loaded, data_type, load_type "
+                "SELECT last_load_date, objects_loaded, data_type, load_type "
                 "FROM load_metadata WHERE data_type = 'cards' ORDER BY id DESC LIMIT 1"
             )
             metadata = cur.fetchone()
@@ -178,29 +178,50 @@ class TestCardsPipeline:
         """Test incremental load skips existing cards"""
         pipeline = CardsPipeline()
         
-        # First, do an initial load
+        # Get initial count (cards may already exist from previous tests)
+        with DatabaseConnection.get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM cards")
+            count_before = cur.fetchone()[0]
+        
+        # First, do an initial load with update_existing=True
         # Limit to first 1000 cards for testing
         initial_result = pipeline.load_initial(batch_size=500, limit=1000)
         assert initial_result['success'] is True
-        initial_count = initial_result['objects_loaded']
+        initial_loaded = initial_result['objects_loaded']
+        assert initial_loaded > 0, "Initial load should process some cards"
         
-        # Then do an incremental load - should skip existing cards
-        # Limit to first 1000 cards for testing
+        # Get count from database after initial load
+        with DatabaseConnection.get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM cards")
+            count_after_initial = cur.fetchone()[0]
+        
+        # With update_existing=True, cards are updated if they exist, so count may not increase
+        # But we should have processed cards
+        assert count_after_initial >= count_before
+        
+        # Then do an incremental load with update_existing=False - should skip existing cards
+        # Limit to first 1000 cards for testing (same limit as initial)
         incremental_result = pipeline.load_incremental(batch_size=500, limit=1000)
         assert incremental_result['success'] is True
         
-        # Verify total count hasn't changed (all cards were skipped)
+        # Verify total count hasn't increased (all cards were skipped due to DO NOTHING)
         with DatabaseConnection.get_cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM cards")
             final_count = cur.fetchone()[0]
         
-        # The incremental load should have skipped all existing cards
-        # So final count should equal initial count
-        assert final_count == initial_count
+        # The incremental load should have skipped all existing cards (DO NOTHING on conflict)
+        # So final count should equal count after initial (no new cards added)
+        assert final_count == count_after_initial, \
+            f"Expected {count_after_initial} cards, got {final_count}. Incremental load should skip existing cards."
+        
+        # Verify that incremental load didn't add new cards (all were skipped)
+        # Note: objects_loaded may reflect cards processed, not necessarily inserted
+        # The key check is that final_count == count_after_initial (no new cards in DB)
+        # If all cards were skipped, the count should remain the same
         
         logger.info(
             f"Incremental load: {incremental_result['objects_loaded']} new cards "
-            f"(total in DB: {final_count})"
+            f"(total in DB: {final_count}, after initial: {count_after_initial})"
         )
     
     def test_card_data_integrity(self, test_database):

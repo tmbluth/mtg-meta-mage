@@ -2,6 +2,7 @@
 
 import time
 import logging
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from psycopg2.extras import execute_batch
 
@@ -185,6 +186,12 @@ class TournamentsPipeline(BasePipeline):
         try:
             event_data = tournament.get('eventData', {})
             
+            # Convert Unix timestamp (INTEGER) from API to TIMESTAMP
+            start_date_unix = tournament.get('startDate')
+            start_date_ts = None
+            if start_date_unix:
+                start_date_ts = datetime.fromtimestamp(start_date_unix)
+            
             cur.execute(
                 """
                 INSERT INTO tournaments (
@@ -205,7 +212,7 @@ class TournamentsPipeline(BasePipeline):
                     tournament.get('TID'),
                     tournament.get('tournamentName'),
                     tournament.get('format'),
-                    tournament.get('startDate'),
+                    start_date_ts,
                     tournament.get('swissNum'),
                     tournament.get('topCut'),
                     event_data.get('city'),
@@ -845,19 +852,21 @@ class TournamentsPipeline(BasePipeline):
         # Load tournaments
         loaded_count = 0
         error_count = 0
-        max_timestamp = 0
+        max_timestamp = None
         
         for tournament in filtered_tournaments:
             if self.insert_all(tournament, include_rounds=True):
                 loaded_count += 1
-                start_date = tournament.get('startDate', 0)
-                if start_date > max_timestamp:
-                    max_timestamp = start_date
+                start_date_unix = tournament.get('startDate')
+                if start_date_unix:
+                    start_date_ts = datetime.fromtimestamp(start_date_unix)
+                    if max_timestamp is None or start_date_ts > max_timestamp:
+                        max_timestamp = start_date_ts
             else:
                 error_count += 1
         
         # Update load metadata
-        if loaded_count > 0 and max_timestamp > 0:
+        if loaded_count > 0 and max_timestamp:
             update_load_metadata(
                 last_timestamp=max_timestamp, 
                 objects_loaded=loaded_count, 
@@ -899,7 +908,9 @@ class TournamentsPipeline(BasePipeline):
         
         # Fetch tournaments since last load
         # Calculate days since last load to use 'last' parameter
-        days_since_last = int((time.time() - last_timestamp) / 86400) + 1  # Add 1 day buffer
+        # Convert datetime to Unix timestamp for comparison with API
+        last_timestamp_unix = last_timestamp.timestamp()
+        days_since_last = int((time.time() - last_timestamp_unix) / 86400) + 1  # Add 1 day buffer
         
         # Common competitive constructed formats (excluding Commander and Limited formats)
         # The API requires both 'game' and 'format' parameters
@@ -970,9 +981,11 @@ class TournamentsPipeline(BasePipeline):
         for tournament in filtered_tournaments:
             if self.insert_all(tournament, include_rounds=True):
                 loaded_count += 1
-                start_date = tournament.get('startDate', 0)
-                if start_date > max_timestamp:
-                    max_timestamp = start_date
+                start_date_unix = tournament.get('startDate')
+                if start_date_unix:
+                    start_date_ts = datetime.fromtimestamp(start_date_unix)
+                    if start_date_ts > max_timestamp:
+                        max_timestamp = start_date_ts
             else:
                 error_count += 1
         

@@ -2,6 +2,7 @@
 
 import time
 import logging
+from datetime import datetime
 from typing import Dict, Optional, Any
 from psycopg2.extras import execute_batch
 
@@ -216,7 +217,7 @@ class CardsPipeline(BasePipeline):
         
         # Update load metadata
         if result['cards_loaded'] > 0:
-            current_timestamp = int(time.time())
+            current_timestamp = datetime.now()
             update_load_metadata(
                 last_timestamp=current_timestamp,
                 objects_loaded=result['cards_loaded'], 
@@ -262,7 +263,7 @@ class CardsPipeline(BasePipeline):
             return self.load_initial(batch_size=batch_size, limit=limit)
         
         # Calculate days since last load
-        days_since_last = (time.time() - last_timestamp) / 86400
+        days_since_last = (time.time() - last_timestamp.timestamp()) / 86400
         
         # For cards, we typically want to reload if it's been more than 7 days
         # since Scryfall updates their bulk data regularly
@@ -275,7 +276,7 @@ class CardsPipeline(BasePipeline):
         
         # Update load metadata
         if result['cards_loaded'] > 0:
-            current_timestamp = int(time.time())
+            current_timestamp = datetime.now()
             update_load_metadata(
                 last_timestamp=current_timestamp,
                 objects_loaded=result['cards_loaded'], 

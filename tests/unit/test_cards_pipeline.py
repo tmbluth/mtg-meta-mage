@@ -1,6 +1,7 @@
 """Unit tests for cards_pipeline module"""
 
 import pytest
+from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
 from typing import Dict, List
 
@@ -410,8 +411,7 @@ def test_load_initial_success(pipeline, mock_scryfall_client, mock_db_connection
     
     with patch('src.etl.cards_pipeline.DatabaseConnection.transaction') as mock_transaction, \
          patch('src.etl.cards_pipeline.execute_batch'), \
-         patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata, \
-         patch('time.time', return_value=1234567890):
+         patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata:
         
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
         mock_transaction.return_value.__exit__.return_value = None
@@ -423,6 +423,9 @@ def test_load_initial_success(pipeline, mock_scryfall_client, mock_db_connection
         assert result['objects_processed'] == 1
         assert result['errors'] == 0
         mock_update_metadata.assert_called_once()
+        # Verify metadata was called with datetime object
+        call_args = mock_update_metadata.call_args
+        assert isinstance(call_args[1]['last_timestamp'], datetime)
 
 
 def test_load_initial_updates_metadata(pipeline, mock_scryfall_client, mock_db_connection, sample_card_data):
@@ -443,8 +446,7 @@ def test_load_initial_updates_metadata(pipeline, mock_scryfall_client, mock_db_c
     
     with patch('src.etl.cards_pipeline.DatabaseConnection.transaction') as mock_transaction, \
          patch('src.etl.cards_pipeline.execute_batch'), \
-         patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata, \
-         patch('time.time', return_value=1234567890):
+         patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata:
         
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
         mock_transaction.return_value.__exit__.return_value = None
@@ -456,7 +458,7 @@ def test_load_initial_updates_metadata(pipeline, mock_scryfall_client, mock_db_c
         call_args = mock_update_metadata.call_args
         assert call_args[1]['data_type'] == 'cards'
         assert call_args[1]['load_type'] == 'initial'
-        assert call_args[1]['last_timestamp'] == 1234567890
+        assert isinstance(call_args[1]['last_timestamp'], datetime)
 
 
 def test_load_initial_handles_no_cards_loaded(pipeline, mock_scryfall_client):
@@ -490,8 +492,7 @@ def test_load_initial_uses_update_existing_true(pipeline, mock_scryfall_client, 
     
     with patch('src.etl.cards_pipeline.DatabaseConnection.transaction') as mock_transaction, \
          patch('src.etl.cards_pipeline.execute_batch') as mock_batch, \
-         patch('src.etl.cards_pipeline.update_load_metadata'), \
-         patch('time.time', return_value=1234567890):
+         patch('src.etl.cards_pipeline.update_load_metadata'):
         
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
         mock_transaction.return_value.__exit__.return_value = None
@@ -522,10 +523,9 @@ def test_load_incremental_success(pipeline, mock_scryfall_client, mock_db_connec
     with patch('src.etl.cards_pipeline.DatabaseConnection.transaction') as mock_transaction, \
          patch('src.etl.cards_pipeline.execute_batch'), \
          patch('src.etl.cards_pipeline.get_last_load_timestamp') as mock_get_timestamp, \
-         patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata, \
-         patch('time.time', return_value=1234567890):
+         patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata:
         
-        mock_get_timestamp.return_value = 1234560000
+        mock_get_timestamp.return_value = datetime.fromtimestamp(1234560000)
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
         mock_transaction.return_value.__exit__.return_value = None
         
@@ -534,6 +534,9 @@ def test_load_incremental_success(pipeline, mock_scryfall_client, mock_db_connec
         assert result['success'] is True
         assert result['objects_loaded'] == 1
         mock_update_metadata.assert_called_once()
+        # Verify metadata was called with datetime object
+        call_args = mock_update_metadata.call_args
+        assert isinstance(call_args[1]['last_timestamp'], datetime)
 
 
 def test_load_incremental_falls_back_to_initial(pipeline, mock_scryfall_client):
@@ -575,10 +578,9 @@ def test_load_incremental_uses_update_existing_false(pipeline, mock_scryfall_cli
     with patch('src.etl.cards_pipeline.DatabaseConnection.transaction') as mock_transaction, \
          patch('src.etl.cards_pipeline.execute_batch') as mock_batch, \
          patch('src.etl.cards_pipeline.get_last_load_timestamp') as mock_get_timestamp, \
-         patch('src.etl.cards_pipeline.update_load_metadata'), \
-         patch('time.time', return_value=1234567890):
+         patch('src.etl.cards_pipeline.update_load_metadata'):
         
-        mock_get_timestamp.return_value = 1234560000
+        mock_get_timestamp.return_value = datetime.fromtimestamp(1234560000)
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
         mock_transaction.return_value.__exit__.return_value = None
         
@@ -608,10 +610,9 @@ def test_load_incremental_updates_metadata(pipeline, mock_scryfall_client, mock_
     with patch('src.etl.cards_pipeline.DatabaseConnection.transaction') as mock_transaction, \
          patch('src.etl.cards_pipeline.execute_batch'), \
          patch('src.etl.cards_pipeline.get_last_load_timestamp') as mock_get_timestamp, \
-         patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata, \
-         patch('time.time', return_value=1234567890):
+         patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata:
         
-        mock_get_timestamp.return_value = 1234560000
+        mock_get_timestamp.return_value = datetime.fromtimestamp(1234560000)
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
         mock_transaction.return_value.__exit__.return_value = None
         
@@ -622,7 +623,7 @@ def test_load_incremental_updates_metadata(pipeline, mock_scryfall_client, mock_
         call_args = mock_update_metadata.call_args
         assert call_args[1]['data_type'] == 'cards'
         assert call_args[1]['load_type'] == 'incremental'
-        assert call_args[1]['last_timestamp'] == 1234567890
+        assert isinstance(call_args[1]['last_timestamp'], datetime)
 
 
 def test_load_incremental_handles_no_cards_loaded(pipeline, mock_scryfall_client):
@@ -632,7 +633,7 @@ def test_load_incremental_handles_no_cards_loaded(pipeline, mock_scryfall_client
     with patch('src.etl.cards_pipeline.get_last_load_timestamp') as mock_get_timestamp, \
          patch('src.etl.cards_pipeline.update_load_metadata') as mock_update_metadata:
         
-        mock_get_timestamp.return_value = 1234560000
+        mock_get_timestamp.return_value = datetime.fromtimestamp(1234560000)
         
         result = pipeline.load_incremental()
         

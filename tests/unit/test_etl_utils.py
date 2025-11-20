@@ -1,6 +1,7 @@
 """Unit tests for etl utils module"""
 
 import pytest
+from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
 
 from src.etl.utils import parse_decklist, get_last_load_timestamp, update_load_metadata
@@ -317,7 +318,8 @@ def test_parse_decklist_large_quantities():
 def test_get_last_load_timestamp_tournaments():
     """Test getting last load timestamp for tournaments"""
     mock_cursor = Mock()
-    mock_cursor.fetchone.return_value = (1234567890,)
+    test_datetime = datetime.fromtimestamp(1234567890)
+    mock_cursor.fetchone.return_value = (test_datetime,)
     
     with patch('src.etl.utils.DatabaseConnection.get_cursor') as mock_get_cursor:
         mock_get_cursor.return_value.__enter__.return_value = mock_cursor
@@ -325,18 +327,19 @@ def test_get_last_load_timestamp_tournaments():
         
         result = get_last_load_timestamp('tournaments')
         
-        assert result == 1234567890
+        assert result == test_datetime
         mock_cursor.execute.assert_called_once()
-        # Verify it checks both 'tournaments' and 'incremental'
-        call_args = mock_cursor.execute.call_args[0][0]
-        assert 'tournaments' in call_args.lower()
-        assert 'incremental' in call_args.lower()
+        # Verify it queries by data_type
+        call_args = mock_cursor.execute.call_args
+        assert 'data_type' in call_args[0][0].lower()
+        assert call_args[0][1] == ('tournaments',)
 
 
 def test_get_last_load_timestamp_cards():
     """Test getting last load timestamp for cards"""
     mock_cursor = Mock()
-    mock_cursor.fetchone.return_value = (1234567890,)
+    test_datetime = datetime.fromtimestamp(1234567890)
+    mock_cursor.fetchone.return_value = (test_datetime,)
     
     with patch('src.etl.utils.DatabaseConnection.get_cursor') as mock_get_cursor:
         mock_get_cursor.return_value.__enter__.return_value = mock_cursor
@@ -344,10 +347,11 @@ def test_get_last_load_timestamp_cards():
         
         result = get_last_load_timestamp('cards')
         
-        assert result == 1234567890
+        assert result == test_datetime
         mock_cursor.execute.assert_called_once()
-        # Verify it uses the load_type parameter
+        # Verify it queries by data_type
         call_args = mock_cursor.execute.call_args
+        assert 'data_type' in call_args[0][0].lower()
         assert call_args[0][1] == ('cards',)
 
 
@@ -375,33 +379,37 @@ def test_get_last_load_timestamp_database_error():
         assert result is None
 
 
-def test_get_last_load_timestamp_default_parameter():
-    """Test that default parameter works (backward compatibility)"""
+def test_get_last_load_timestamp_archetypes():
+    """Test getting last load timestamp for archetypes"""
     mock_cursor = Mock()
-    mock_cursor.fetchone.return_value = (1234567890,)
+    test_datetime = datetime.fromtimestamp(1234567890)
+    mock_cursor.fetchone.return_value = (test_datetime,)
     
     with patch('src.etl.utils.DatabaseConnection.get_cursor') as mock_get_cursor:
         mock_get_cursor.return_value.__enter__.return_value = mock_cursor
         mock_get_cursor.return_value.__exit__.return_value = None
         
-        result = get_last_load_timestamp()
+        result = get_last_load_timestamp('archetypes')
         
-        assert result == 1234567890
-        # Should use the default 'incremental' parameter
+        assert result == test_datetime
+        mock_cursor.execute.assert_called_once()
+        # Verify it queries by data_type
         call_args = mock_cursor.execute.call_args
-        assert call_args[0][1] == ('incremental',)
+        assert 'data_type' in call_args[0][0].lower()
+        assert call_args[0][1] == ('archetypes',)
 
 
 def test_update_load_metadata_success():
     """Test successful update of load metadata"""
     mock_cursor = Mock()
+    test_datetime = datetime.fromtimestamp(1234567890)
     
     with patch('src.etl.utils.DatabaseConnection.get_cursor') as mock_get_cursor:
         mock_get_cursor.return_value.__enter__.return_value = mock_cursor
         mock_get_cursor.return_value.__exit__.return_value = None
         
         update_load_metadata(
-            last_timestamp=1234567890,
+            last_timestamp=test_datetime,
             objects_loaded=100,
             data_type='tournaments',
             load_type='initial'
@@ -410,39 +418,41 @@ def test_update_load_metadata_success():
         mock_cursor.execute.assert_called_once()
         call_args = mock_cursor.execute.call_args
         assert 'INSERT INTO load_metadata' in call_args[0][0]
-        # Verify parameters are passed correctly: (last_timestamp, objects_loaded, data_type, load_type)
-        assert call_args[0][1] == (1234567890, 100, 'tournaments', 'initial')
+        # Verify parameters are passed correctly: (last_load_date, objects_loaded, data_type, load_type)
+        assert call_args[0][1] == (test_datetime, 100, 'tournaments', 'initial')
 
 
 def test_update_load_metadata_default_load_type():
     """Test update_load_metadata with default load_type"""
     mock_cursor = Mock()
+    test_datetime = datetime.fromtimestamp(1234567890)
     
     with patch('src.etl.utils.DatabaseConnection.get_cursor') as mock_get_cursor:
         mock_get_cursor.return_value.__enter__.return_value = mock_cursor
         mock_get_cursor.return_value.__exit__.return_value = None
         
         update_load_metadata(
-            last_timestamp=1234567890,
+            last_timestamp=test_datetime,
             objects_loaded=50,
             data_type='cards'
         )
         
         call_args = mock_cursor.execute.call_args
-        # Verify default load_type 'incremental' is used: (last_timestamp, objects_loaded, data_type, load_type)
-        assert call_args[0][1] == (1234567890, 50, 'cards', 'incremental')
+        # Verify default load_type 'incremental' is used: (last_load_date, objects_loaded, data_type, load_type)
+        assert call_args[0][1] == (test_datetime, 50, 'cards', 'incremental')
 
 
 def test_update_load_metadata_uses_commit():
     """Test that update_load_metadata uses commit=True"""
     mock_cursor = Mock()
+    test_datetime = datetime.fromtimestamp(1234567890)
     
     with patch('src.etl.utils.DatabaseConnection.get_cursor') as mock_get_cursor:
         mock_get_cursor.return_value.__enter__.return_value = mock_cursor
         mock_get_cursor.return_value.__exit__.return_value = None
         
         update_load_metadata(
-            last_timestamp=1234567890,
+            last_timestamp=test_datetime,
             objects_loaded=100,
             data_type='tournaments'
         )
@@ -453,12 +463,13 @@ def test_update_load_metadata_uses_commit():
 
 def test_update_load_metadata_database_error():
     """Test that database errors are raised"""
+    test_datetime = datetime.fromtimestamp(1234567890)
     with patch('src.etl.utils.DatabaseConnection.get_cursor') as mock_get_cursor:
         mock_get_cursor.return_value.__enter__.side_effect = Exception("Database error")
         
         with pytest.raises(Exception):
             update_load_metadata(
-                last_timestamp=1234567890,
+                last_timestamp=test_datetime,
                 objects_loaded=100,
                 data_type='tournaments'
             )
