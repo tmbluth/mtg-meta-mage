@@ -3,13 +3,25 @@
 ## Purpose
 MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists against the competitive meta. The system collects tournament data from TopDeck.gg API, stores it in PostgreSQL, and provides insights via LLM analysis. 
 
-Users can:
-- Submit decklists to get competitive meta analysis
-- Archetype classification
-- Meta tracking for weekly trends
-- Receive sideboard optimizations for the meta
-- Get matchup specific coaching
-- Have their deck analyzed for synergies and anti-synergies (non-bos)
+**Current Features Implemented:**
+- Card data collection from Scryfall API
+- Tournament data collection from TopDeck.gg API
+- LLM-powered archetype classification for decklists
+- Initial and incremental ETL pipelines for cards, tournaments, and archetypes
+
+**Future Features:**
+- Meta tracking analytics
+  - Compare 2 time windows for trends
+  - Archetype tier lists
+  - Archetype win rates
+- Get matchup specific coaching 
+  - Select deck of interest and meta time window
+  - Strongest/weakest cards against top tier decks
+  - Sideboard guide against top tier decks
+- Decklist optimization:
+  - Submit deck and select meta time window
+  - Update maindeck flex spots for selected meta
+  - Update sideboard for the selected meta
 
 ## Tech Stack
 - **Language**: Python 3.11+
@@ -20,6 +32,7 @@ Users can:
   - `requests` - HTTP client for API calls
   - `python-dotenv` - Environment variable management
   - `pydantic` - Data validation and settings management
+  - `langchain-core`, `langchain-openai`, `langchain-anthropic`, `langchain-aws` - LLM integration
 - **Testing**: `pytest` with custom markers for unit/integration tests
 
 ## Project Conventions
@@ -37,12 +50,15 @@ Users can:
 - Implement proper error logging with the `logging` module
 
 ### Architecture Patterns
-- **Service Layer Pattern**: External API clients (`TopDeckClient`, `ScryfallClient`) abstract API interactions
+- **Service Layer Pattern**: External API clients (`TopDeckClient`, `ScryfallClient`, `LLMClient`) abstract API interactions
 - **Connection Pooling**: Database connections managed via `ThreadedConnectionPool` for efficient resource usage
-- **ETL Pipeline**: Extract-Transform-Load pattern for tournament data ingestion
+- **ETL Pipeline**: Extract-Transform-Load pattern for tournament, card, and archetype data ingestion
+  - `BasePipeline` abstract class with `load_initial()` and `load_incremental()` methods
+  - `CardsPipeline`, `TournamentsPipeline`, `ArchetypeClassificationPipeline` extend `BasePipeline`
 - **Context Managers**: Database transactions and cursors use context managers for automatic cleanup
 - **Filter Functions**: Pure functions for data validation and filtering (e.g., `filter_tournaments`, `is_valid_match`)
-- **Dependency Injection**: Services accept optional parameters (e.g., API keys) with fallback to environment variables
+- **Dependency Injection**: Services accept optional parameters (e.g., API keys, model names) with fallback to environment variables
+- **Normalized Schema Design**: Two-table design for archetype classification (`archetype_groups` + `archetype_classifications`)
 
 ### Testing Strategy
 - **Unit Tests**: Located in `tests/unit/`, use mocking to avoid external dependencies
@@ -71,6 +87,7 @@ Users can:
 - **Data Sources**: 
   - TopDeck.gg API provides tournament data, player standings, decklists, and match results
   - Scryfall API provides card data, prices, and rulings
+  - LLM APIs (Azure OpenAI, OpenAI, Anthropic, AWS Bedrock) provide archetype classification
 
 ## Important Constraints
 - **Rate Limiting**: TopDeck API enforces 200 requests per minute (300ms delay between requests)
@@ -92,8 +109,15 @@ Users can:
   - No authentication required
   - Rate Limit: 50-100 requests/second
   - Provides: Card data and rulings via bulk data downloads
+- **LLM APIs**:
+  - Azure OpenAI: Requires `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_LLM_ENDPOINT`, `AZURE_OPENAI_API_VERSION`
+  - OpenAI: Requires `OPENAI_API_KEY`
+  - Anthropic: Requires `ANTHROPIC_API_KEY`
+  - AWS Bedrock: Requires AWS credentials and `AWS_REGION`
+  - Model selection: `LLM_MODEL` environment variable (e.g., "gpt-4o-mini", "claude-3-5-sonnet-20241022")
+  - Provides: Archetype classification for decklists
 - **PostgreSQL Database**:
-  - Tables: `tournaments`, `players`, `decklists`, `match_rounds`, `matches`, `load_metadata`, `cards`, `deck_cards`
+  - Tables: `tournaments`, `players`, `decklists`, `match_rounds`, `matches`, `load_metadata`, `cards`, `deck_cards`, `archetype_groups`, `archetype_classifications`
   - Connection pooling: 1-10 connections (configurable)
   - Environment variables: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` in .env.
   - Use `TEST_DB_NAME` in .env for testing database operations (make sure to clean up after)

@@ -16,10 +16,12 @@ MTG Meta Mage needs to automatically classify decklists into archetypes (e.g., "
 ## Impact
 - Affected specs: New capability `archetype-classification`
 - Affected code:
-  - `src/database/schema.sql` - Add `archetypes` table, modify `decklists` table
-  - `src/etl/` - New archetype ETL pipeline module and `prompts` folder
+  - `src/database/schema.sql` - Add `archetype_groups` and `archetype_classifications` tables, modify `decklists` table
+  - `src/etl/archetype_pipeline.py` - New archetype ETL pipeline module
+  - `src/etl/api_clients/llm_client.py` - LLM client abstraction using Langchain
+  - `src/etl/prompts/archetype_classification_v1.txt` - Prompt template for classification
   - `src/etl/main.py` - Add archetype classification CLI command
   - `tests/unit/` - New unit tests for archetype classification logic
   - `tests/integration/` - New integration tests for archetype ETL pipeline
-- New dependencies: `strands-agents` LLM abstraction library (OpenAI, Azure OpenAI, Anthropic, Bedrock)
+- New dependencies: `langchain-core`, `langchain-openai`, `langchain-anthropic`, `langchain-aws` for LLM integration
 

@@ -6,8 +6,9 @@ An AI-powered tool for analyzing Magic: The Gathering decklists against the comp
 
 - Card data collection from Scryfall API
 - Tournament data collection from TopDeck.gg API
-- PostgreSQL database for storing tournament, player, decklist, match, and cards data
-- Initial bulk load and incremental update capabilities
+- LLM-powered archetype classification for decklists
+- PostgreSQL database for storing tournament, player, decklist, match, cards, and archetype data
+- Initial bulk load and incremental update capabilities for all data types
 
 ## Prerequisites
 
@@ -15,6 +16,11 @@ An AI-powered tool for analyzing Magic: The Gathering decklists against the comp
 - [uv](https://github.com/astral-sh/uv) package manager (install with `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - PostgreSQL 18+ database set up
 - TopDeck.gg API key ([Get API Key](https://topdeck.gg/docs/tournaments-v2))
+- LLM API credentials (optional, for archetype classification):
+  - Azure OpenAI: `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_LLM_ENDPOINT`, `AZURE_OPENAI_API_VERSION`
+  - OpenAI: TBD
+  - Anthropic: TBD
+  - AWS Bedrock: TBD
 
 ## Installation
 
@@ -45,6 +51,14 @@ DB_PASSWORD=your_db_password
 
 # TopDeck API
 TOPDECK_API_KEY=your_topdeck_api_key
+
+# LLM Configuration (for archetype classification)
+LLM_MODEL=gpt-4o-mini  # Model name/deployment name
+
+# Azure OpenAI (if using Azure)
+AZURE_OPENAI_API_KEY=your_azure_api_key
+AZURE_OPENAI_LLM_ENDPOINT=https://your-resource.openai.azure.com/openai/deployments/{}/chat/completions?api-version={}
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
 ```
 
 ## Data
@@ -79,10 +93,18 @@ The database includes the following tables:
   - Depends on both `decklists` and `cards` tables
   - Cards are parsed from `decklist_text` using `parse_decklist()` utility function
 
+#### Archetype Classification Tables
+- **archetype_groups**: Stores unique archetype definitions (format, main_title, color_identity, strategy)
+  - Database-enforced uniqueness via UNIQUE constraint
+  - Referenced by both `decklists` and `archetype_classifications`
+- **archetype_classifications**: Tracks historical classification events with metadata
+  - Stores confidence scores, LLM model used, prompt version, and timestamp
+  - Enables tracking of reclassification and confidence changes over time
+
 #### Metadata Table
 - **load_metadata**: Tracks last successful load timestamp for incremental updates
-  - Stores metadata for both tournament and card loads separately
-  - Uses `data_type` field to distinguish between 'tournaments' and 'cards'
+  - Stores metadata for tournament, card, and archetype loads separately
+  - Uses `data_type` field to distinguish between 'tournaments', 'cards', and 'archetypes'
   - Uses `load_type` field to distinguish between 'initial' and 'incremental' loads
 
 ### Loading Data
@@ -95,10 +117,13 @@ The database includes the following tables:
    - `tournaments` → `players` → `decklists` → `deck_cards` (requires cards to exist)
    - `tournaments` → `match_rounds` → `matches` (requires players to exist)
 
+3. **Archetypes must be loaded after both cards and tournaments** - Archetype classification requires both `decklists` (from tournaments) and enriched card data from `deck_cards` (joined with `cards`).
+
 **First-time setup order:**
 1. Initialize database schema
 2. Load cards (initial load)
 3. Load tournaments (initial load)
+4. Load archetypes (initial load - requires LLM API credentials)
 
 #### Loading Card Data from Scryfall
 
@@ -129,19 +154,40 @@ uv run python src/etl/main.py --data-type tournaments --mode initial --days 180
 uv run python src/etl/main.py --data-type tournaments --mode incremental
 ```
 
-#### Scheduled Updates
+#### Loading Archetype Classifications
 
-**Daily**: Incremental tournament updates
+Archetype classification uses LLMs to automatically categorize decklists by analyzing mainboard cards. This requires both card and tournament data to be loaded first, and requires LLM API credentials.
+
+**Key Features:**
+- Analyzes mainboard cards (name, oracle text, type, mana cost, CMC, color identity)
+- Classifies into archetype groups (format, main_title, color_identity, strategy)
+- Provides confidence scores (0.0-1.0) for classification quality
+- Tracks historical classifications (model, prompt version, timestamp)
+
+**Strategy Types:** aggro, midrange, control, ramp, combo
+
 ```bash
-# Run daily at off-peak hours
-0 2 * * * cd /path/to/mtg-meta-mage && uv run python src/etl/main.py --data-type tournaments --mode incremental
+# Initial load - classify all unclassified decklists
+uv run python src/etl/main.py --data-type archetypes --mode initial --model-provider azure_openai --batch-size 50
+
+# Incremental load - classify decklists from tournaments since last archetype load
+uv run python src/etl/main.py --data-type archetypes --mode incremental --model-provider azure_openai
 ```
 
-**Check monthly for set releases**: Refresh card data
-```bash
-# Run monthly (e.g., first Sunday of the month at 3 AM)
-0 3 1-7 * 0 cd /path/to/mtg-meta-mage && uv run python src/etl/main.py --data-type cards --mode incremental
+**Example Classification Output:**
 ```
+main_title: "amulet_titan"
+color_identity: "gruul"
+strategy: "combo"
+confidence: 0.95
+```
+
+**Reclassification Strategy:**
+- Update `LLM_MODEL` environment variable to use a different model
+- Modify prompt template in `src/etl/prompts/archetype_classification_v{?}.txt` (or create new version)
+- Run `--mode initial` to reclassify existing decklists with new model/prompt
+- Historical classifications are preserved in `archetype_classifications` table
+- Each decklist's `archetype_group_id` is updated to the latest classification
 
 ## API Attribution
 

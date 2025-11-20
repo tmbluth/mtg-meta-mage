@@ -48,9 +48,9 @@ The system currently ingests tournament data (tournaments, players, decklists, m
 - Rule-based classification - rejected per user requirement (LLM-only approach)
 
 **Implementation:**
-- Use `strands-agents` library for unified interface across providers
-- Store `llm_model` (e.g., "gpt-4o", "claude-3-5-sonnet") and `prompt_id` in `archetypes` table
-- Allow model selection via environment variable or CLI parameter
+- Use `langchain-core`, `langchain-openai`, `langchain-anthropic`, and `langchain-aws` for unified interface across providers
+- Store `llm_model` (e.g., "gpt-4o", "claude-3-5-sonnet-20241022") and `prompt_id` in `archetype_classifications` table
+- Model selection via `LLM_MODEL` environment variable, provider via `--model-provider` CLI parameter
 
 ### Decision 2: Archetype Schema Design
 **What:** Create two-table normalized design with `archetype_groups` for unique archetype definitions and `archetype_classifications` for historical classification events.
@@ -222,10 +222,10 @@ decklists.decklist_id → deck_cards (section='mainboard') → cards → LLM pro
 4. Test schema changes on test database
 
 ### Phase 2: ETL Implementation
-1. Implement LLM client abstraction using strands-agents classes
+1. Implement LLM client abstraction using Langchain classes (`src/etl/api_clients/llm_client.py`)
 2. Create `ArchetypeClassificationPipeline` extending `BasePipeline` (query decks, enrich cards, classify)
 3. Implement `load_initial()` and `load_incremental()` with standardized return format
-4. Add CLI command for archetype classification in `main.py`
+4. Add CLI command for archetype classification in `main.py` with `--model-provider` argument
 5. Use shared utility functions from `src/etl/utils.py` for metadata tracking
 
 ### Phase 3: Testing
@@ -239,8 +239,9 @@ decklists.decklist_id → deck_cards (section='mainboard') → cards → LLM pro
 3. Adjust prompts and confidence thresholds as needed
 
 ### Rollback Plan
-- Drop `archetype_id` column from `decklists` table
-- Drop `archetypes` table
+- Drop `archetype_group_id` column from `decklists` table
+- Drop `archetype_classifications` table
+- Drop `archetype_groups` table
 - Remove archetype ETL code (no impact on existing data loads)
 
 ## Open Questions
