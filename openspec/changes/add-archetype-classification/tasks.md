@@ -70,11 +70,11 @@
 - [x] 8.6 Fix any linter errors: `pylint src/etl/archetype_pipeline.py src/etl/api_clients/llm_client.py` (no errors)
 
 ## 9. Documentation
-- [ ] 9.1 Update `README.md` with archetype classification CLI usage
-- [ ] 9.2 Add archetype classification examples to documentation
-- [ ] 9.3 Document LLM model selection and environment variables
-- [ ] 9.4 Document prompt versioning and reclassification strategy
-- [ ] 9.5 Update `openspec/project.md` with archetype classification conventions
+- [ ] 9.1 Align `openspec/changes/add-archetype-classification` documentation with the changes in the repo. The code and tests work now. Use as source of truth
+- [ ] 9.2 Update `README.md` with changes relevant to a new repo contributor/user (CLI usage, features, etc). Make sure to only share the most important info
+- [ ] 9.3 Add archetype classification examples to documentation
+- [ ] 9.4 Document LLM model selection and and prompt versioning for the reclassification strategy
+- [ ] 9.5 Update `openspec/project.md` with changes
 
 
 

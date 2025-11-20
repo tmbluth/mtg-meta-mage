@@ -3,6 +3,7 @@
 import time
 import json
 import logging
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
 import os
@@ -115,12 +116,12 @@ class ArchetypeClassificationPipeline(BasePipeline):
             logger.error(f"Error querying unclassified decklists: {e}", exc_info=True)
             raise
     
-    def get_decklists_since_timestamp(self, timestamp: int) -> List[Dict[str, Any]]:
+    def get_decklists_since_timestamp(self, timestamp: datetime) -> List[Dict[str, Any]]:
         """
         Query decklists from tournaments since a given timestamp.
         
         Args:
-            timestamp: Unix timestamp to filter tournaments
+            timestamp: datetime to filter tournaments
             
         Returns:
             List of decklist dictionaries with keys: decklist_id, format, tournament_id, start_date
@@ -145,7 +146,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
                         'decklist_id': row[0],
                         'format': row[1],
                         'tournament_id': row[2],
-                        'start_date': row[3]
+                        'start_date': row[3]  # This is now a datetime object
                     }
                     for row in rows
                 ]
@@ -586,7 +587,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
                 )
             
             # Update load metadata
-            current_timestamp = int(time.time())
+            current_timestamp = datetime.now()
             update_load_metadata(
                 last_timestamp=current_timestamp,
                 objects_loaded=classified,
@@ -672,7 +673,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
                 for decklist in batch:
                     decklist_id = decklist['decklist_id']
                     format_name = decklist['format']
-                    start_date = decklist['start_date']
+                    start_date = decklist['start_date']  # This is now a datetime object
                     
                     # Track maximum timestamp
                     if start_date > max_timestamp:

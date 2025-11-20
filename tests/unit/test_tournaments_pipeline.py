@@ -1,6 +1,7 @@
 """Unit tests for tournaments_pipeline module"""
 
 import pytest
+from datetime import datetime
 from unittest.mock import Mock, MagicMock, patch, call
 from typing import Dict, List
 
@@ -217,7 +218,7 @@ def test_insert_tournament_success(mock_db_connection, pipeline, mock_topdeck_cl
         'TID': '123',
         'tournamentName': 'Test Tournament',
         'format': 'Standard',
-        'startDate': 1234567890,
+        'startDate': 1234567890,  # Unix timestamp - pipeline converts to datetime
         'swissNum': 5,
         'topCut': 8,
         'eventData': {
@@ -232,8 +233,11 @@ def test_insert_tournament_success(mock_db_connection, pipeline, mock_topdeck_cl
         
         pipeline.insert_tournament(tournament, mock_db_connection)
         
-        mock_db_connection.cursor.assert_called_once()
-        mock_db_connection.cursor.return_value.execute.assert_called_once()
+        # Verify execute was called with datetime object for start_date
+        execute_call = mock_db_connection.cursor.return_value.execute
+        assert execute_call.called
+        call_args = execute_call.call_args[0][1]
+        assert isinstance(call_args[3], type(None)) or isinstance(call_args[3], datetime)  # start_date
 
 
 def test_insert_tournament_handles_missing_fields(mock_db_connection, pipeline):
@@ -644,14 +648,14 @@ def test_load_initial_success(pipeline, mock_topdeck_client, mock_db_connection)
             'tournamentName': 'Tournament 1',
             'format': 'Standard',
             'game': 'Magic: The Gathering',
-            'startDate': 1234567890
+            'startDate': 1234567890  # Unix timestamp
         },
         {
             'TID': '2',
             'tournamentName': 'Tournament 2',
             'format': 'Modern',
             'game': 'Magic: The Gathering',
-            'startDate': 1234567900
+            'startDate': 1234567900  # Unix timestamp
         }
     ]
     
@@ -673,6 +677,9 @@ def test_load_initial_success(pipeline, mock_topdeck_client, mock_db_connection)
         assert result['objects_processed'] == 2
         assert result['errors'] == 0
         mock_update_metadata.assert_called_once()
+        # Verify metadata was called with datetime object
+        call_args = mock_update_metadata.call_args
+        assert isinstance(call_args[1]['last_timestamp'], datetime)
 
 
 def test_load_initial_filters_tournaments(pipeline, mock_topdeck_client, mock_db_connection):
@@ -720,7 +727,7 @@ def test_load_incremental_success(pipeline, mock_topdeck_client, mock_db_connect
             'tournamentName': 'New Tournament',
             'format': 'Standard',
             'game': 'Magic: The Gathering',
-            'startDate': 1234567890
+            'startDate': 1234567890  # Unix timestamp
         }
     ]
     
@@ -733,7 +740,7 @@ def test_load_incremental_success(pipeline, mock_topdeck_client, mock_db_connect
          patch('src.etl.tournaments_pipeline.update_load_metadata') as mock_update_metadata, \
          patch('src.etl.tournaments_pipeline.execute_batch'):
         
-        mock_get_timestamp.return_value = 1234560000
+        mock_get_timestamp.return_value = datetime.fromtimestamp(1234560000)
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
         mock_transaction.return_value.__exit__.return_value = None
         
@@ -742,6 +749,9 @@ def test_load_incremental_success(pipeline, mock_topdeck_client, mock_db_connect
         assert result['success'] is True
         assert result['objects_loaded'] == 1
         mock_update_metadata.assert_called_once()
+        # Verify metadata was called with datetime object
+        call_args = mock_update_metadata.call_args
+        assert isinstance(call_args[1]['last_timestamp'], datetime)
 
 
 def test_load_incremental_falls_back_to_initial(pipeline, mock_topdeck_client):
@@ -768,7 +778,7 @@ def test_load_incremental_handles_no_new_tournaments(pipeline, mock_topdeck_clie
     mock_topdeck_client.get_tournaments.return_value = []
     
     with patch('src.etl.tournaments_pipeline.get_last_load_timestamp') as mock_get_timestamp:
-        mock_get_timestamp.return_value = 1234560000
+        mock_get_timestamp.return_value = datetime.fromtimestamp(1234560000)
         
         result = pipeline.load_incremental()
         

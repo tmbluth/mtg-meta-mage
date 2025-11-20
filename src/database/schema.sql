@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
     tournament_id TEXT PRIMARY KEY,
     tournament_name TEXT NOT NULL,
     format TEXT NOT NULL,
-    start_date INTEGER NOT NULL,
+    start_date TIMESTAMP NOT NULL,
     swiss_num INTEGER,
     top_cut INTEGER,
     city TEXT,
@@ -95,8 +95,7 @@ CREATE TABLE IF NOT EXISTS matches (
 -- Load metadata table for tracking incremental loads
 CREATE TABLE IF NOT EXISTS load_metadata (
     id SERIAL PRIMARY KEY,
-    last_load_timestamp INTEGER NOT NULL,
-    last_load_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     load_type TEXT NOT NULL DEFAULT 'incremental',
     data_type TEXT NOT NULL,
     objects_loaded INTEGER DEFAULT 0,

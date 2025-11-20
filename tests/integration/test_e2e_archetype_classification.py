@@ -7,8 +7,6 @@ import json
 from unittest.mock import patch, MagicMock
 
 from src.etl.api_clients.llm_client import get_llm_client
-from src.etl.archetype_pipeline import ArchetypeClassificationResponse
-
 from src.etl.archetype_pipeline import (
     ArchetypeClassificationPipeline,
     ArchetypeClassificationResponse,
@@ -204,15 +202,33 @@ class TestArchetypeClassificationPipeline:
     @pytest.fixture
     def sample_tournament_data(self, test_database):
         """Load sample tournament and card data into database"""
-        # Load cards first
-        cards_pipeline = CardsPipeline()
-        cards_result = cards_pipeline.insert_cards(batch_size=1000, update_existing=True)
-        assert cards_result['cards_loaded'] > 0
+        # Check if cards already exist (preserved across tests for performance)
+        with DatabaseConnection.get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM cards")
+            existing_card_count = cur.fetchone()[0]
+        
+        if existing_card_count > 0:
+            logger.info(f"Using existing {existing_card_count} cards in database (skipping Scryfall load)")
+        else:
+            # Load cards from Scryfall (only on first test)
+            logger.info("Loading card data from Scryfall...")
+            cards_pipeline = CardsPipeline()
+            cards_result = cards_pipeline.insert_cards(batch_size=1000, update_existing=True)
+            assert cards_result['cards_loaded'] > 0, "Failed to load any cards from Scryfall"
+            logger.info(f"Loaded {cards_result['cards_loaded']} cards")
+            
+            # Verify cards are in database
+            with DatabaseConnection.get_cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM cards")
+                card_count = cur.fetchone()[0]
+                assert card_count > 0, "Cards table is empty after loading"
+                logger.info(f"Verified {card_count} cards in database")
         
         # Load a tournament
         api_key = os.getenv('TOPDECK_API_KEY')
         assert api_key, "TOPDECK_API_KEY environment variable not set"
         
+        logger.info("Fetching tournament data from TopDeck API...")
         tournaments_pipeline = TournamentsPipeline(api_key)
         tournaments = tournaments_pipeline.client.get_tournaments(
             game="Magic: The Gathering",
@@ -220,22 +236,38 @@ class TestArchetypeClassificationPipeline:
             last=30
         )
         
-        assert tournaments is not None and len(tournaments) > 0
+        assert tournaments is not None and len(tournaments) > 0, "No tournaments fetched from API"
+        logger.info(f"Fetched {len(tournaments)} tournaments")
         
         # Insert first tournament with deck data
+        logger.info(f"Inserting tournament: {tournaments[0].get('tournamentName', 'Unknown')}")
         success = tournaments_pipeline.insert_all(tournaments[0], include_rounds=False)
-        assert success is True
+        assert success is True, "Failed to insert tournament data"
         
-        # Verify we have decklists with cards
+        # Verify we have tournament in database
         with DatabaseConnection.get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM tournaments")
+            tournament_count = cur.fetchone()[0]
+            assert tournament_count > 0, "Tournaments table is empty after insertion"
+            
+            cur.execute("SELECT COUNT(*) FROM decklists")
+            decklist_count = cur.fetchone()[0]
+            assert decklist_count > 0, "Decklists table is empty after insertion"
+            
+            cur.execute("SELECT COUNT(*) FROM deck_cards WHERE section = 'mainboard'")
+            deck_card_count = cur.fetchone()[0]
+            assert deck_card_count > 0, "No mainboard cards inserted"
+            
+            # Verify we have decklists with cards
             cur.execute("""
                 SELECT COUNT(DISTINCT d.decklist_id)
                 FROM decklists d
                 JOIN deck_cards dc ON d.decklist_id = dc.decklist_id
                 WHERE dc.section = 'mainboard'
             """)
-            decklist_count = cur.fetchone()[0]
-            assert decklist_count > 0
+            decklists_with_cards = cur.fetchone()[0]
+            assert decklists_with_cards > 0, "No decklists have mainboard cards"
+            logger.info(f"Loaded tournament with {decklist_count} decklists and {decklists_with_cards} with mainboard cards")
         
         return tournaments[0]
     
@@ -244,15 +276,29 @@ class TestArchetypeClassificationPipeline:
         decklists = pipeline.get_unclassified_decklists()
         
         assert isinstance(decklists, list)
-        assert len(decklists) > 0
+        assert len(decklists) > 0, "No unclassified decklists found - sample tournament data may not have been loaded"
         
-        # Verify structure
+        # Verify structure and content
         for decklist in decklists:
             assert 'decklist_id' in decklist
             assert 'format' in decklist
             assert 'tournament_id' in decklist
             assert isinstance(decklist['decklist_id'], int)
+            assert decklist['decklist_id'] > 0, f"Invalid decklist_id: {decklist['decklist_id']}"
             assert isinstance(decklist['format'], str)
+            assert len(decklist['format']) > 0, "Format should not be empty"
+            assert isinstance(decklist['tournament_id'], str)
+            assert len(decklist['tournament_id']) > 0, "Tournament ID should not be empty"
+        
+        # Verify these decklists actually have no archetype_group_id
+        with DatabaseConnection.get_cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*) FROM decklists 
+                WHERE archetype_group_id IS NULL
+            """)
+            unclassified_count = cur.fetchone()[0]
+            assert unclassified_count == len(decklists), \
+                f"Mismatch between query result ({len(decklists)}) and actual NULL archetype_group_id count ({unclassified_count})"
         
         logger.info(f"Found {len(decklists)} unclassified decklists")
     
@@ -268,16 +314,17 @@ class TestArchetypeClassificationPipeline:
                 LIMIT 1
             """)
             result = cur.fetchone()
-            assert result is not None
+            assert result is not None, "No decklists with mainboard cards found"
             decklist_id = result[0]
         
         # Get mainboard cards
         cards = pipeline.get_decklist_mainboard_cards(decklist_id)
         
         assert isinstance(cards, list)
-        assert len(cards) > 0
+        assert len(cards) > 0, f"No mainboard cards found for decklist {decklist_id}"
         
-        # Verify card structure
+        # Verify card structure and content
+        total_quantity = 0
         for card in cards:
             assert 'card_id' in card
             assert 'name' in card
@@ -287,15 +334,29 @@ class TestArchetypeClassificationPipeline:
             assert 'cmc' in card
             assert 'color_identity' in card
             assert 'oracle_text' in card
-            assert card['quantity'] > 0
+            
+            # Verify data types and values
+            assert isinstance(card['card_id'], str), f"card_id should be string, got {type(card['card_id'])}"
+            assert isinstance(card['name'], str), f"name should be string, got {type(card['name'])}"
+            assert len(card['name']) > 0, "Card name should not be empty"
+            assert isinstance(card['quantity'], int), f"quantity should be int, got {type(card['quantity'])}"
+            assert card['quantity'] > 0, f"Quantity must be positive, got {card['quantity']}"
+            assert isinstance(card['cmc'], (int, float)), f"cmc should be numeric, got {type(card['cmc'])}"
+            assert isinstance(card['color_identity'], list), f"color_identity should be list, got {type(card['color_identity'])}"
+            
+            total_quantity += card['quantity']
         
-        logger.info(f"Retrieved {len(cards)} mainboard cards for decklist {decklist_id}")
+        # Verify deck has reasonable size (40-100 cards is typical for constructed formats)
+        assert total_quantity >= 40, f"Deck has only {total_quantity} cards, which seems too few"
+        assert total_quantity <= 100, f"Deck has {total_quantity} cards, which seems too many"
+        
+        logger.info(f"Retrieved {len(cards)} unique mainboard cards (total {total_quantity} cards) for decklist {decklist_id}")
     
     def test_insert_archetype_with_mock_llm(self, pipeline, sample_tournament_data, test_database):
         """Test inserting archetype with mocked LLM response"""
         # Get a decklist
         decklists = pipeline.get_unclassified_decklists()
-        assert len(decklists) > 0
+        assert len(decklists) > 0, "No unclassified decklists available for testing"
         
         decklist = decklists[0]
         decklist_id = decklist['decklist_id']
@@ -303,7 +364,14 @@ class TestArchetypeClassificationPipeline:
         
         # Get mainboard cards
         cards = pipeline.get_decklist_mainboard_cards(decklist_id)
-        assert len(cards) > 0
+        assert len(cards) > 0, f"No mainboard cards found for decklist {decklist_id}"
+        
+        # Verify initial state - no archetype groups or classifications
+        with DatabaseConnection.get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM archetype_groups")
+            initial_group_count = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM archetype_classifications")
+            initial_classification_count = cur.fetchone()[0]
         
         # Mock LLM response
         mock_response = {
@@ -318,42 +386,81 @@ class TestArchetypeClassificationPipeline:
             mock_classify.return_value = ArchetypeClassificationResponse(**mock_response)
             
             # Insert archetype
-            archetype_id = pipeline.insert_archetype(decklist_id, format_name, cards)
+            archetype_group_id = pipeline.insert_archetype(decklist_id, format_name, cards)
             
-            assert archetype_id is not None
-            assert isinstance(archetype_id, int)
+            assert archetype_group_id is not None, "insert_archetype returned None"
+            assert isinstance(archetype_group_id, int), f"Expected int, got {type(archetype_group_id)}"
+            assert archetype_group_id > 0, f"Invalid archetype_group_id: {archetype_group_id}"
         
-        # Verify archetype in database
+        # Verify archetype group in database
         with DatabaseConnection.get_cursor() as cur:
             cur.execute("""
-                SELECT archetype_id, main_title, color_identity, strategy, 
-                       archetype_confidence, llm_model, prompt_id
-                FROM archetypes
-                WHERE archetype_id = %s
-            """, (archetype_id,))
+                SELECT archetype_group_id, format, main_title, color_identity, strategy, created_at
+                FROM archetype_groups
+                WHERE archetype_group_id = %s
+            """, (archetype_group_id,))
             
-            result = cur.fetchone()
-            assert result is not None
-            assert result[1] == 'Burn'  # main_title
-            assert result[2] == 'red'  # color_identity
-            assert result[3] == 'aggro'  # strategy
-            assert result[4] == 0.95  # archetype_confidence
-            assert result[5] == pipeline.model_name  # llm_model
-            assert result[6] == pipeline.prompt_id  # prompt_id
+            group_result = cur.fetchone()
+            assert group_result is not None, f"Archetype group {archetype_group_id} not found in database"
+            assert group_result[0] == archetype_group_id  # archetype_group_id
+            assert group_result[1] == format_name  # format
+            assert group_result[2] == 'Burn'  # main_title
+            assert group_result[3] == 'red'  # color_identity
+            assert group_result[4] == 'aggro'  # strategy
+            assert group_result[5] is not None  # created_at
+            
+            # Verify classification event in database
+            cur.execute("""
+                SELECT classification_id, decklist_id, archetype_group_id, 
+                       archetype_confidence, llm_model, prompt_id, classified_at
+                FROM archetype_classifications
+                WHERE decklist_id = %s AND archetype_group_id = %s
+            """, (decklist_id, archetype_group_id))
+            
+            classification_result = cur.fetchone()
+            assert classification_result is not None, f"Classification not found for decklist {decklist_id}"
+            assert classification_result[0] > 0  # classification_id
+            assert classification_result[1] == decklist_id  # decklist_id
+            assert classification_result[2] == archetype_group_id  # archetype_group_id
+            assert classification_result[3] == 0.95  # archetype_confidence
+            assert classification_result[4] == pipeline.model_name  # llm_model
+            assert classification_result[5] == pipeline.prompt_id  # prompt_id
+            assert classification_result[6] is not None  # classified_at
+            
+            # Verify counts increased
+            cur.execute("SELECT COUNT(*) FROM archetype_groups")
+            final_group_count = cur.fetchone()[0]
+            assert final_group_count == initial_group_count + 1, \
+                f"Expected group count to increase by 1 (from {initial_group_count} to {final_group_count})"
+            
+            cur.execute("SELECT COUNT(*) FROM archetype_classifications")
+            final_classification_count = cur.fetchone()[0]
+            assert final_classification_count == initial_classification_count + 1, \
+                f"Expected classification count to increase by 1 (from {initial_classification_count} to {final_classification_count})"
         
-        logger.info(f"Successfully inserted archetype {archetype_id} for decklist {decklist_id}")
+        logger.info(f"Successfully inserted archetype group {archetype_group_id} for decklist {decklist_id}")
     
     def test_update_decklist_archetype(self, pipeline, sample_tournament_data, test_database):
-        """Test updating decklist archetype_id reference"""
+        """Test updating decklist archetype_group_id reference"""
         # Get a decklist and create an archetype
         decklists = pipeline.get_unclassified_decklists()
-        assert len(decklists) > 0
+        assert len(decklists) > 0, "No unclassified decklists available"
         
         decklist = decklists[0]
         decklist_id = decklist['decklist_id']
         format_name = decklist['format']
         
+        # Verify initial state - decklist has no archetype_group_id
+        with DatabaseConnection.get_cursor() as cur:
+            cur.execute("""
+                SELECT archetype_group_id FROM decklists WHERE decklist_id = %s
+            """, (decklist_id,))
+            result = cur.fetchone()
+            assert result is not None, f"Decklist {decklist_id} not found"
+            assert result[0] is None, f"Decklist {decklist_id} already has archetype_group_id: {result[0]}"
+        
         cards = pipeline.get_decklist_mainboard_cards(decklist_id)
+        assert len(cards) > 0, f"No cards found for decklist {decklist_id}"
         
         # Create archetype with mock LLM
         mock_response = {
@@ -366,28 +473,43 @@ class TestArchetypeClassificationPipeline:
         
         with patch.object(pipeline, 'classify_decklist_llm') as mock_classify:
             mock_classify.return_value = ArchetypeClassificationResponse(**mock_response)
-            archetype_id = pipeline.insert_archetype(decklist_id, format_name, cards)
+            archetype_group_id = pipeline.insert_archetype(decklist_id, format_name, cards)
         
-        assert archetype_id is not None
+        assert archetype_group_id is not None, "Failed to create archetype group"
+        assert archetype_group_id > 0, f"Invalid archetype_group_id: {archetype_group_id}"
         
         # Update decklist reference
-        success = pipeline.update_decklist_archetype(decklist_id, archetype_id)
-        assert success is True
+        success = pipeline.update_decklist_archetype(decklist_id, archetype_group_id)
+        assert success is True, f"Failed to update decklist {decklist_id}"
         
-        # Verify decklist references archetype
+        # Verify decklist now references archetype group
         with DatabaseConnection.get_cursor() as cur:
             cur.execute("""
-                SELECT archetype_id FROM decklists WHERE decklist_id = %s
+                SELECT archetype_group_id FROM decklists WHERE decklist_id = %s
             """, (decklist_id,))
             
             result = cur.fetchone()
-            assert result is not None
-            assert result[0] == archetype_id
+            assert result is not None, f"Decklist {decklist_id} not found after update"
+            assert result[0] is not None, "archetype_group_id is still NULL after update"
+            assert result[0] == archetype_group_id, \
+                f"Expected archetype_group_id {archetype_group_id}, got {result[0]}"
         
-        logger.info(f"Successfully updated decklist {decklist_id} to reference archetype {archetype_id}")
+        logger.info(f"Successfully updated decklist {decklist_id} to reference archetype group {archetype_group_id}")
     
     def test_load_initial_with_mock_llm(self, pipeline, sample_tournament_data, test_database):
         """Test initial load with mocked LLM"""
+        # Get initial counts
+        with DatabaseConnection.get_cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM decklists")
+            total_decklists = cur.fetchone()[0]
+            assert total_decklists > 0, "No decklists in database to classify"
+            
+            cur.execute("SELECT COUNT(*) FROM archetype_groups")
+            initial_group_count = cur.fetchone()[0]
+            
+            cur.execute("SELECT COUNT(*) FROM archetype_classifications")
+            initial_classification_count = cur.fetchone()[0]
+        
         # Mock LLM responses
         def mock_classify(cards, format_name, max_retries=1):
             return ArchetypeClassificationResponse(
@@ -402,42 +524,58 @@ class TestArchetypeClassificationPipeline:
             # Run initial load with small batch size
             result = pipeline.load_initial(batch_size=5)
             
-            assert result['success'] is True
-            assert result['objects_loaded'] >= 0
-            assert result['objects_processed'] >= result['objects_loaded']
-            assert result['errors'] >= 0
+            assert result['success'] is True, "load_initial returned success=False"
+            assert result['objects_loaded'] >= 0, f"Invalid objects_loaded: {result['objects_loaded']}"
+            assert result['objects_processed'] >= result['objects_loaded'], \
+                f"objects_processed ({result['objects_processed']}) should be >= objects_loaded ({result['objects_loaded']})"
+            assert result['errors'] >= 0, f"Invalid errors count: {result['errors']}"
+            assert result['objects_loaded'] + result['errors'] == result['objects_processed'], \
+                "objects_loaded + errors should equal objects_processed"
         
-        # Verify archetypes were created
+        # Verify archetype groups were created
         with DatabaseConnection.get_cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM archetypes")
-            archetype_count = cur.fetchone()[0]
-            assert archetype_count == result['objects_loaded']
+            cur.execute("SELECT COUNT(*) FROM archetype_groups")
+            archetype_group_count = cur.fetchone()[0]
+            # Note: Could be less than objects_loaded if multiple decklists share same archetype
+            assert archetype_group_count >= initial_group_count, \
+                f"Archetype groups did not increase (was {initial_group_count}, now {archetype_group_count})"
+            if result['objects_loaded'] > 0:
+                assert archetype_group_count >= 1, "No archetype groups created despite successful classifications"
             
-            # Verify decklists reference archetypes
+            # Verify decklists reference archetype groups
             cur.execute("""
-                SELECT COUNT(*) FROM decklists WHERE archetype_id IS NOT NULL
+                SELECT COUNT(*) FROM decklists WHERE archetype_group_id IS NOT NULL
             """)
             linked_count = cur.fetchone()[0]
-            assert linked_count == result['objects_loaded']
+            assert linked_count == result['objects_loaded'], \
+                f"Expected {result['objects_loaded']} decklists with archetype_group_id, got {linked_count}"
+            
+            # Verify classification events were created
+            cur.execute("SELECT COUNT(*) FROM archetype_classifications")
+            classification_count = cur.fetchone()[0]
+            assert classification_count == initial_classification_count + result['objects_loaded'], \
+                f"Expected {result['objects_loaded']} new classifications, got {classification_count - initial_classification_count}"
         
         # Verify load metadata
-        with DatabaseConnection.get_cursor() as cur:
-            cur.execute("""
-                SELECT last_load_timestamp, objects_loaded, data_type, load_type
-                FROM load_metadata
-                WHERE data_type = 'archetypes'
-                ORDER BY id DESC LIMIT 1
-            """)
-            metadata = cur.fetchone()
-            if result['objects_loaded'] > 0:
-                assert metadata is not None
-                assert metadata[1] == result['objects_loaded']
-                assert metadata[2] == 'archetypes'
-                assert metadata[3] == 'initial'
+        if result['objects_loaded'] > 0:
+            with DatabaseConnection.get_cursor() as cur:
+                cur.execute("""
+                    SELECT last_load_date, objects_loaded, data_type, load_type
+                    FROM load_metadata
+                    WHERE data_type = 'archetypes'
+                    ORDER BY id DESC LIMIT 1
+                """)
+                metadata = cur.fetchone()
+                assert metadata is not None, "No load metadata created"
+                assert metadata[1] == result['objects_loaded'], \
+                    f"Metadata objects_loaded ({metadata[1]}) != result objects_loaded ({result['objects_loaded']})"
+                assert metadata[2] == 'archetypes', f"Expected data_type 'archetypes', got '{metadata[2]}'"
+                assert metadata[3] == 'initial', f"Expected load_type 'initial', got '{metadata[3]}'"
         
         logger.info(
             f"Initial load: {result['objects_loaded']} classified, "
-            f"{result['errors']} errors"
+            f"{result['errors']} errors, "
+            f"{result['objects_processed']} processed"
         )
     
     def test_load_incremental_with_mock_llm(self, pipeline, sample_tournament_data, test_database):
@@ -454,20 +592,43 @@ class TestArchetypeClassificationPipeline:
         
         with patch.object(pipeline, 'classify_decklist_llm', side_effect=mock_classify):
             initial_result = pipeline.load_initial(batch_size=3)
-            assert initial_result['success'] is True
+            assert initial_result['success'] is True, "Initial load failed"
             
-            # Run incremental load (should find no new tournaments)
+            # Get counts after initial load
+            with DatabaseConnection.get_cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM archetype_classifications")
+                classifications_after_initial = cur.fetchone()[0]
+                assert classifications_after_initial == initial_result['objects_loaded'], \
+                    f"Classification count mismatch after initial load"
+            
+            # Run incremental load (should find no new tournaments since last load)
             incremental_result = pipeline.load_incremental(batch_size=3)
-            assert incremental_result['success'] is True
+            assert incremental_result['success'] is True, "Incremental load failed"
             
             # Total classified should be initial + incremental
             total_classified = initial_result['objects_loaded'] + incremental_result['objects_loaded']
         
-        # Verify total archetypes
+        # Verify total classification events
         with DatabaseConnection.get_cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM archetypes")
-            archetype_count = cur.fetchone()[0]
-            assert archetype_count == total_classified
+            cur.execute("SELECT COUNT(*) FROM archetype_classifications")
+            classification_count = cur.fetchone()[0]
+            assert classification_count == total_classified, \
+                f"Expected {total_classified} total classifications, got {classification_count}"
+            
+            # Verify archetype groups (may be fewer if decklists share archetypes)
+            cur.execute("SELECT COUNT(*) FROM archetype_groups")
+            archetype_group_count = cur.fetchone()[0]
+            if total_classified > 0:
+                assert archetype_group_count >= 1, "No archetype groups created"
+            
+            # Verify load metadata for incremental load
+            if incremental_result['objects_loaded'] > 0:
+                cur.execute("""
+                    SELECT COUNT(*) FROM load_metadata 
+                    WHERE data_type = 'archetypes' AND load_type = 'incremental'
+                """)
+                incremental_metadata_count = cur.fetchone()[0]
+                assert incremental_metadata_count >= 1, "No incremental load metadata created"
         
         logger.info(
             f"Incremental load: {incremental_result['objects_loaded']} new classifications "
@@ -496,24 +657,26 @@ class TestArchetypeClassificationPipeline:
         with patch.object(pipeline, 'classify_decklist_llm') as mock_classify:
             mock_classify.return_value = ArchetypeClassificationResponse(**low_confidence_response)
             
-            archetype_id = pipeline.insert_archetype(decklist_id, format_name, cards)
+            archetype_group_id = pipeline.insert_archetype(decklist_id, format_name, cards)
             
             # Should still insert even with low confidence
-            assert archetype_id is not None
+            assert archetype_group_id is not None
         
-        # Verify low confidence archetype in database
+        # Verify low confidence classification in database
         with DatabaseConnection.get_cursor() as cur:
             cur.execute("""
-                SELECT archetype_confidence FROM archetypes WHERE archetype_id = %s
-            """, (archetype_id,))
+                SELECT archetype_confidence 
+                FROM archetype_classifications 
+                WHERE decklist_id = %s AND archetype_group_id = %s
+            """, (decklist_id, archetype_group_id))
             result = cur.fetchone()
             assert result is not None
             assert result[0] == 0.35
         
-        logger.info(f"Successfully stored low-confidence archetype (confidence: 0.35)")
+        logger.info(f"Successfully stored low-confidence classification (confidence: 0.35)")
     
-    def test_archetype_id_updates_on_decklists(self, pipeline, sample_tournament_data, test_database):
-        """Test that archetype_id is properly updated on decklists table"""
+    def test_archetype_group_id_updates_on_decklists(self, pipeline, sample_tournament_data, test_database):
+        """Test that archetype_group_id is properly updated on decklists table"""
         # Get multiple unclassified decklists
         decklists = pipeline.get_unclassified_decklists()
         assert len(decklists) >= 2
@@ -537,25 +700,25 @@ class TestArchetypeClassificationPipeline:
             
             with patch.object(pipeline, 'classify_decklist_llm') as mock_classify:
                 mock_classify.return_value = ArchetypeClassificationResponse(**mock_response)
-                archetype_id = pipeline.insert_archetype(decklist_id, format_name, cards)
+                archetype_group_id = pipeline.insert_archetype(decklist_id, format_name, cards)
             
-            assert archetype_id is not None
+            assert archetype_group_id is not None
             
             # Update decklist
-            success = pipeline.update_decklist_archetype(decklist_id, archetype_id)
+            success = pipeline.update_decklist_archetype(decklist_id, archetype_group_id)
             assert success is True
             
-            classified_ids.append((decklist_id, archetype_id))
+            classified_ids.append((decklist_id, archetype_group_id))
         
-        # Verify all decklists have correct archetype_id
+        # Verify all decklists have correct archetype_group_id
         with DatabaseConnection.get_cursor() as cur:
-            for decklist_id, expected_archetype_id in classified_ids:
+            for decklist_id, expected_archetype_group_id in classified_ids:
                 cur.execute("""
-                    SELECT archetype_id FROM decklists WHERE decklist_id = %s
+                    SELECT archetype_group_id FROM decklists WHERE decklist_id = %s
                 """, (decklist_id,))
                 result = cur.fetchone()
                 assert result is not None
-                assert result[0] == expected_archetype_id
+                assert result[0] == expected_archetype_group_id
         
-        logger.info(f"Successfully verified archetype_id updates on {len(classified_ids)} decklists")
+        logger.info(f"Successfully verified archetype_group_id updates on {len(classified_ids)} decklists")
 

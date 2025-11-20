@@ -42,40 +42,45 @@ def test_database():
 
 @pytest.fixture(autouse=True)
 def cleanup_test_data(test_database):
-    """Clean up test data before and after each test that uses the database"""
+    """
+    Clean up test data before and after each test that uses the database.
+    
+    Note: Cards table is preserved across tests to avoid reloading ~100K+ cards
+    from Scryfall for every test. All other tables are cleaned up.
+    """
     # Only cleanup if test_database fixture was successfully set up
     try:
-        # Clean up before test
+        # Clean up before test (preserve cards table)
         with DatabaseConnection.transaction() as conn:
             cur = conn.cursor()
             # Tournament tables (order matters due to foreign keys)
             cur.execute("TRUNCATE TABLE matches CASCADE")
             cur.execute("TRUNCATE TABLE match_rounds CASCADE")
-            cur.execute("TRUNCATE TABLE archetypes CASCADE")
+            cur.execute("TRUNCATE TABLE archetype_classifications CASCADE")
+            cur.execute("TRUNCATE TABLE archetype_groups CASCADE")
             cur.execute("TRUNCATE TABLE deck_cards CASCADE")
             cur.execute("TRUNCATE TABLE decklists CASCADE")
             cur.execute("TRUNCATE TABLE players CASCADE")
             cur.execute("TRUNCATE TABLE tournaments CASCADE")
-            # Card and metadata tables
-            cur.execute("TRUNCATE TABLE cards CASCADE")
+            # Metadata tables only (cards table preserved)
             cur.execute("TRUNCATE TABLE load_metadata CASCADE")
             cur.close()
         
         yield
         
-        # Clean up after test
+        # Clean up after test (preserve cards table)
         with DatabaseConnection.transaction() as conn:
             cur = conn.cursor()
             # Tournament tables (order matters due to foreign keys)
             cur.execute("TRUNCATE TABLE matches CASCADE")
             cur.execute("TRUNCATE TABLE match_rounds CASCADE")
-            cur.execute("TRUNCATE TABLE archetypes CASCADE")
+            cur.execute("TRUNCATE TABLE archetype_classifications CASCADE")
+            cur.execute("TRUNCATE TABLE archetype_groups CASCADE")
             cur.execute("TRUNCATE TABLE deck_cards CASCADE")
             cur.execute("TRUNCATE TABLE decklists CASCADE")
             cur.execute("TRUNCATE TABLE players CASCADE")
             cur.execute("TRUNCATE TABLE tournaments CASCADE")
-            # Card and metadata tables
-            cur.execute("TRUNCATE TABLE cards CASCADE")
+            # Metadata tables only (cards table preserved)
             cur.execute("TRUNCATE TABLE load_metadata CASCADE")
             cur.close()
     except Exception as e:

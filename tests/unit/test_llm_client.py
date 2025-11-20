@@ -73,8 +73,7 @@ class TestGetLLMClient:
         'AZURE_OPENAI_API_KEY': 'test-key',
         'AZURE_OPENAI_LLM_ENDPOINT': 'https://{}.openai.azure.com/{}/v1',
         'AZURE_OPENAI_API_VERSION': '2024-02-15-preview',
-        'LLM_MODEL': 'gpt-4',
-        'AZURE_OPENAI_API_VERSION': 'test-endpoint'
+        'LLM_MODEL': 'gpt-4'
     })
     def test_azure_openai_with_endpoint_template(self, mock_azure_chat):
         """Test Azure OpenAI with endpoint template"""
@@ -84,7 +83,8 @@ class TestGetLLMClient:
         result = get_llm_client('gpt-4', model_provider='azure_openai')
         
         # Verify endpoint was constructed correctly
-        expected_endpoint = 'https://gpt-4.openai.azure.com/test-endpoint/v1'
+        # Template format: model_name goes in first {}, azure_openai_api_version in second {}
+        expected_endpoint = 'https://gpt-4.openai.azure.com/2024-02-15-preview/v1'
         mock_azure_chat.assert_called_once_with(
             azure_deployment='gpt-4',
             temperature=0.1,
