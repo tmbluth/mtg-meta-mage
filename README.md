@@ -189,6 +189,210 @@ confidence: 0.95
 - Historical classifications are preserved in `archetype_classifications` table
 - Each decklist's `archetype_group_id` is updated to the latest classification
 
+## Meta Analytics API
+
+The Meta Analytics API provides REST endpoints for querying archetype performance and matchup data across all constructed formats.
+
+### Starting the API Server
+
+Start the FastAPI server using uvicorn:
+
+```bash
+# Development mode with auto-reload
+uv run uvicorn src.app.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# Production mode
+uv run uvicorn src.app.api.main:app --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000`. OpenAPI documentation is available at:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+### API Endpoints
+
+#### GET /health
+
+Health check endpoint to verify API is running.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-11-24T12:00:00Z"
+}
+```
+
+#### GET /api/v1/meta/archetypes
+
+Get archetype rankings with meta share and win rates for a format.
+
+**Query Parameters:**
+- `format` (required): Tournament format (e.g., "Modern", "Pioneer", "Standard")
+- `current_days` (optional, default: 14): Number of days for current period
+- `previous_start_days` (optional, default: 56): Days ago for previous period start
+- `previous_end_days` (optional, default: 14): Days ago for previous period end
+- `color_identity` (optional): Filter by color identity (e.g., "dimir", "jeskai")
+- `strategy` (optional): Filter by strategy ("aggro", "midrange", "control", "ramp", "combo")
+- `group_by` (optional): Group results by "color_identity" or "strategy"
+
+**Example Request:**
+```bash
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern"
+```
+
+**Example Response:**
+```json
+{
+  "data": [
+    {
+      "main_title": "amulet_titan",
+      "color_identity": "gruul",
+      "strategy": "ramp",
+      "meta_share_current": 15.5,
+      "meta_share_previous": 12.0,
+      "win_rate_current": 52.3,
+      "win_rate_previous": 50.1,
+      "sample_size_current": 25,
+      "sample_size_previous": 20,
+      "match_count_current": 100,
+      "match_count_previous": 80
+    }
+  ],
+  "metadata": {
+    "format": "Modern",
+    "current_period": {
+      "days": 14,
+      "start_date": "2025-11-10T00:00:00Z"
+    },
+    "previous_period": {
+      "start_days": 56,
+      "end_days": 14,
+      "start_date": "2025-09-29T00:00:00Z",
+      "end_date": "2025-11-10T00:00:00Z"
+    },
+    "timestamp": "2025-11-24T12:00:00Z"
+  }
+}
+```
+
+**Filtering Examples:**
+```bash
+# Filter by color identity
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&color_identity=red"
+
+# Filter by strategy
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Pioneer&strategy=aggro"
+
+# Group by color identity
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&group_by=color_identity"
+
+# Custom time windows (last 7 days vs 7-21 days ago)
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&current_days=7&previous_start_days=21&previous_end_days=7"
+```
+
+#### GET /api/v1/meta/matchups
+
+Get matchup matrix showing head-to-head win rates between archetypes.
+
+**Query Parameters:**
+- `format` (required): Tournament format (e.g., "Modern", "Pioneer", "Standard")
+- `days` (optional, default: 14): Number of days to include in analysis
+
+**Example Request:**
+```bash
+curl "http://localhost:8000/api/v1/meta/matchups?format=Modern"
+```
+
+**Example Response:**
+```json
+{
+  "matrix": {
+    "amulet_titan": {
+      "burn": {
+        "win_rate": 55.0,
+        "match_count": 20
+      },
+      "elves": {
+        "win_rate": 48.5,
+        "match_count": 15
+      }
+    },
+    "burn": {
+      "amulet_titan": {
+        "win_rate": 45.0,
+        "match_count": 20
+      },
+      "elves": {
+        "win_rate": 52.0,
+        "match_count": 25
+      }
+    }
+  },
+  "archetypes": ["amulet_titan", "burn", "elves"],
+  "metadata": {
+    "format": "Modern",
+    "days": 14,
+    "start_date": "2025-11-10T00:00:00Z",
+    "timestamp": "2025-11-24T12:00:00Z"
+  }
+}
+```
+
+**Note:** Win rates may be `null` for matchups with fewer than 5 matches (insufficient data).
+
+**Custom Time Window Example:**
+```bash
+# Last 30 days
+curl "http://localhost:8000/api/v1/meta/matchups?format=Pioneer&days=30"
+```
+
+### API Error Responses
+
+All endpoints return standard error responses:
+
+**400 Bad Request:**
+```json
+{
+  "detail": {
+    "error": "Invalid Time Windows",
+    "message": "Time windows overlap: previous_end_days (15) must be less than current_days (14)"
+  }
+}
+```
+
+**404 Not Found:**
+```json
+{
+  "detail": {
+    "error": "No Data Available",
+    "message": "No archetype data found for format 'Vintage' in the specified time window"
+  }
+}
+```
+
+**500 Internal Server Error:**
+```json
+{
+  "detail": {
+    "error": "Internal Server Error",
+    "message": "An error occurred while processing the request"
+  }
+}
+```
+
+### Multi-Format Support
+
+The API dynamically supports all constructed, non-Commander formats in the database. Common formats include:
+- **Standard**: The current Standard rotation
+- **Modern**: Modern format
+- **Pioneer**: Pioneer format
+- **Legacy**: Legacy format
+- **Vintage**: Vintage format
+- **Pauper**: Pauper format
+
+No hardcoded format lists - the API queries available tournaments and returns data for any format present in the database.
+
 ## API Attribution
 
 This project uses data from the TopDeck.gg API. Per their usage requirements, any project using this data must include proper attribution:
