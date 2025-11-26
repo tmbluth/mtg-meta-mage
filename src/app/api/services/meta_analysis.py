@@ -27,8 +27,7 @@ class MetaService:
         self,
         format: str,
         current_days: int = 14,
-        previous_start_days: int = 56,
-        previous_end_days: int = 14,
+        previous_days: int = 14,
         color_identity: Optional[str] = None,
         strategy: Optional[str] = None,
         group_by: Optional[str] = None,
@@ -38,9 +37,8 @@ class MetaService:
 
         Args:
             format: Tournament format (e.g., "Modern", "Pioneer")
-            current_days: Number of days for current period (default: 14)
-            previous_start_days: Days ago for previous period start (default: 56)
-            previous_end_days: Days ago for previous period end (default: 14)
+            current_days: Number of days back from today for current period (default: 14)
+            previous_days: Number of days back from end of current period for previous period (default: 14)
             color_identity: Optional filter by color identity
             strategy: Optional filter by strategy
             group_by: Optional grouping field (color_identity or strategy)
@@ -49,15 +47,15 @@ class MetaService:
             Dictionary with archetype rankings data and metadata
         """
         # Calculate time windows
-        current_start, previous_start, previous_end = self._calculate_time_windows(
-            current_days, previous_start_days, previous_end_days
+        current_start, current_end, previous_start, previous_end = self._calculate_time_windows(
+            current_days, previous_days
         )
 
         # Fetch data for both periods
-        current_archetype_data = self._fetch_archetype_data(format, current_start, datetime.now(timezone.utc))
+        current_archetype_data = self._fetch_archetype_data(format, current_start, current_end)
         previous_archetype_data = self._fetch_archetype_data(format, previous_start, previous_end)
 
-        current_match_data = self._fetch_match_data(format, current_start, datetime.now(timezone.utc))
+        current_match_data = self._fetch_match_data(format, current_start, current_end)
         previous_match_data = self._fetch_match_data(format, previous_start, previous_end)
 
         # Calculate meta share and win rates
@@ -90,10 +88,13 @@ class MetaService:
 
         metadata = {
             "format": format,
-            "current_period": {"days": current_days, "start_date": current_start.isoformat()},
+            "current_period": {
+                "days": current_days,
+                "start_date": current_start.isoformat(),
+                "end_date": current_end.isoformat(),
+            },
             "previous_period": {
-                "start_days": previous_start_days,
-                "end_days": previous_end_days,
+                "days": previous_days,
                 "start_date": previous_start.isoformat(),
                 "end_date": previous_end.isoformat(),
             },
@@ -152,25 +153,25 @@ class MetaService:
         return {"matrix": matrix, "archetypes": archetypes, "metadata": metadata}
 
     def _calculate_time_windows(
-        self, current_days: int, previous_start_days: int, previous_end_days: int
-    ) -> tuple[datetime, datetime, datetime]:
+        self, current_days: int, previous_days: int
+    ) -> tuple[datetime, datetime, datetime, datetime]:
         """
         Calculate start and end dates for current and previous time windows.
 
         Args:
-            current_days: Number of days for current period
-            previous_start_days: Days ago for previous period start
-            previous_end_days: Days ago for previous period end
+            current_days: Number of days back from today for current period
+            previous_days: Number of days back from end of current period for previous period
 
         Returns:
-            Tuple of (current_start, previous_start, previous_end)
+            Tuple of (current_start, current_end, previous_start, previous_end)
         """
         now = datetime.now(timezone.utc)
+        current_end = now
         current_start = now - timedelta(days=current_days)
-        previous_end = now - timedelta(days=previous_end_days)
-        previous_start = now - timedelta(days=previous_start_days)
+        previous_end = current_start
+        previous_start = current_start - timedelta(days=previous_days)
 
-        return current_start, previous_start, previous_end
+        return current_start, current_end, previous_start, previous_end
 
     def _fetch_archetype_data(self, format: str, start_date: datetime, end_date: datetime) -> pl.DataFrame:
         """
@@ -206,14 +207,16 @@ class MetaService:
             columns = [desc[0] for desc in cursor.description]
 
         if not rows:
-            return pl.DataFrame({
-                "archetype_group_id": [],
-                "format": [],
-                "main_title": [],
-                "color_identity": [],
-                "strategy": [],
-                "tournament_date": [],
-            })
+            return pl.DataFrame(
+                schema={
+                    "archetype_group_id": pl.Int64,
+                    "format": pl.Utf8,
+                    "main_title": pl.Utf8,
+                    "color_identity": pl.Utf8,
+                    "strategy": pl.Utf8,
+                    "tournament_date": pl.Datetime,
+                }
+            )
 
         return pl.DataFrame(rows, schema=columns, orient="row")
 
@@ -255,16 +258,18 @@ class MetaService:
             cursor.execute(query, (format, start_date, end_date))
             rows = cursor.fetchall()
             if not rows:
-                return pl.DataFrame({
-                    "player_archetype_id": [],
-                    "player_archetype": [],
-                    "opponent_archetype_id": [],
-                    "opponent_archetype": [],
-                    "player1_id": [],
-                    "player2_id": [],
-                    "winner_id": [],
-                    "tournament_date": [],
-                })
+                return pl.DataFrame(
+                    schema={
+                        "player_archetype_id": pl.Int64,
+                        "player_archetype": pl.Utf8,
+                        "opponent_archetype_id": pl.Int64,
+                        "opponent_archetype": pl.Utf8,
+                        "player1_id": pl.Int64,
+                        "player2_id": pl.Int64,
+                        "winner_id": pl.Int64,
+                        "tournament_date": pl.Datetime,
+                    }
+                )
             columns = [desc[0] for desc in cursor.description]
 
         return pl.DataFrame(rows, schema=columns, orient="row")
@@ -280,14 +285,16 @@ class MetaService:
             DataFrame with meta share calculations
         """
         if len(df) == 0:
-            return pl.DataFrame({
-                "archetype_group_id": [],
-                "main_title": [],
-                "color_identity": [],
-                "strategy": [],
-                "meta_share": [],
-                "sample_size": [],
-            })
+            return pl.DataFrame(
+                schema={
+                    "archetype_group_id": pl.Int64,
+                    "main_title": pl.Utf8,
+                    "color_identity": pl.Utf8,
+                    "strategy": pl.Utf8,
+                    "meta_share": pl.Float64,
+                    "sample_size": pl.Int64,
+                }
+            )
 
         total_decklists = len(df)
 
@@ -301,7 +308,7 @@ class MetaService:
 
         return result
 
-    def _calculate_win_rate(self, df: pl.DataFrame, min_matches: int = 5) -> pl.DataFrame:
+    def _calculate_win_rate(self, df: pl.DataFrame, min_matches: int = 3) -> pl.DataFrame:
         """
         Calculate win rate for each archetype from match data.
 
@@ -313,12 +320,14 @@ class MetaService:
             DataFrame with win rate calculations
         """
         if len(df) == 0:
-            return pl.DataFrame({
-                "archetype_group_id": [],
-                "main_title": [],
-                "win_rate": [],
-                "match_count": [],
-            })
+            return pl.DataFrame(
+                schema={
+                    "archetype_group_id": pl.Int64,
+                    "main_title": pl.Utf8,
+                    "win_rate": pl.Float64,
+                    "match_count": pl.Int64,
+                }
+            )
 
         # Create separate DataFrames for each player's perspective
         # Player 1 matches
@@ -396,8 +405,8 @@ class MetaService:
             )
         else:
             result = result.with_columns([
-                pl.lit(None).alias("meta_share_previous"),
-                pl.lit(None).alias("sample_size_previous"),
+                pl.lit(None, dtype=pl.Float64).alias("meta_share_previous"),
+                pl.lit(None, dtype=pl.Int64).alias("sample_size_previous"),
             ])
 
         # Join current win rates
@@ -412,8 +421,8 @@ class MetaService:
             )
         else:
             result = result.with_columns([
-                pl.lit(None).alias("win_rate_current"),
-                pl.lit(None).alias("match_count_current"),
+                pl.lit(None, dtype=pl.Float64).alias("win_rate_current"),
+                pl.lit(None, dtype=pl.Int64).alias("match_count_current"),
             ])
 
         # Join previous win rates
@@ -428,8 +437,8 @@ class MetaService:
             )
         else:
             result = result.with_columns([
-                pl.lit(None).alias("win_rate_previous"),
-                pl.lit(None).alias("match_count_previous"),
+                pl.lit(None, dtype=pl.Float64).alias("win_rate_previous"),
+                pl.lit(None, dtype=pl.Int64).alias("match_count_previous"),
             ])
 
         return result
@@ -494,7 +503,7 @@ class MetaService:
             pl.col("strategy").alias("color_identity"),  # Use strategy as color_identity placeholder
         ])
 
-    def _calculate_matchup_matrix(self, df: pl.DataFrame, min_matches: int = 5) -> dict:
+    def _calculate_matchup_matrix(self, df: pl.DataFrame, min_matches: int = 3) -> dict:
         """
         Calculate matchup matrix from match data.
 

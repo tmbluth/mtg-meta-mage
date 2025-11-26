@@ -21,8 +21,8 @@ The system SHALL provide a REST API endpoint that returns ranked archetype perfo
 - **WHEN** GET /api/v1/meta/archetypes?format={format_name} is requested
 - **THEN** return JSON with archetypes ranked by meta share for chosen format
 - **AND** each archetype includes main_title, meta_share_current, meta_share_previous, win_rate_current, win_rate_previous
-- **AND** current period defaults to last 2 weeks
-- **AND** previous period defaults to 2-8 weeks ago
+- **AND** current period defaults to last 14 days
+- **AND** previous period defaults to 14 days back from end of current period (no overlap)
 
 #### Scenario: Get archetype rankings for different formats
 - **WHEN** GET /api/v1/meta/archetypes?format=Modern is requested
@@ -32,10 +32,10 @@ The system SHALL provide a REST API endpoint that returns ranked archetype perfo
 - **AND** results are isolated by format
 
 #### Scenario: Get archetype rankings with custom time windows
-- **WHEN** GET /api/v1/meta/archetypes?format=Modern&current_days=7&previous_start_days=14&previous_end_days=7 is requested
+- **WHEN** GET /api/v1/meta/archetypes?format=Modern&current_days=7&previous_days=7 is requested
 - **THEN** return archetypes with current period as last 7 days
-- **AND** previous period as 7-14 days ago
-- **AND** time windows do not overlap
+- **AND** previous period as 7 days back from end of current period
+- **AND** time windows do not overlap (automatic)
 
 #### Scenario: Filter archetype rankings by color identity
 - **WHEN** GET /api/v1/meta/archetypes?format=Pioneer&color_identity=dimir is requested
@@ -50,10 +50,11 @@ The system SHALL provide a REST API endpoint that returns ranked archetype perfo
 - **THEN** return 400 Bad Request
 - **AND** response includes error message indicating invalid format
 
-#### Scenario: Request archetypes with overlapping time windows
-- **WHEN** Example: GET /api/v1/meta/archetypes?format=Standard&current_days=14&previous_start_days=10 is requested
-- **THEN** return 400 Bad Request
-- **AND** response includes error message indicating time window overlap
+#### Scenario: Time windows automatically non-overlapping
+- **WHEN** any valid values for current_days and previous_days are provided
+- **THEN** system automatically calculates non-overlapping windows
+- **AND** previous period ends where current period begins
+- **AND** no validation errors for time window overlap
 
 ### Requirement: Archetype Grouping by Color and Strategy
 The system SHALL provide breakdown of archetype rankings grouped by color_identity and strategy within the selected format.
@@ -72,35 +73,35 @@ The system SHALL provide breakdown of archetype rankings grouped by color_identi
 The system SHALL calculate meta share as the percentage of decklists with the archetype in the specified time window relative to total decklists in that time window for the format.
 
 #### Scenario: Calculate meta share for archetype in current period
-- **WHEN** calculating meta share for any format for last 2 weeks
+- **WHEN** calculating meta share for any format for last 14 days
 - **THEN** count decklists with archetype_group_id matching each archetype (e.g. "neoform", "burn", etc)
-- **AND** divide by total Modern decklists in last 2 weeks
+- **AND** divide by total decklists in that format in last 14 days
 - **AND** return as percentage (0-100)
 
 #### Scenario: Compare meta share between current and previous periods
 - **WHEN** calculating meta share change for any archetype
-- **THEN** calculate meta_share_current for last 2 weeks
-- **AND** calculate meta_share_previous for 2-8 weeks ago
+- **THEN** calculate meta_share_current for last 14 days
+- **AND** calculate meta_share_previous for 14 days back from end of current period
 - **AND** return both values for comparison
 
 ### Requirement: Win Rate Calculation
 The system SHALL calculate win rate as the percentage of matches won by decklists with the archetype in the specified time window.
 
 #### Scenario: Calculate win rate for archetype in current period
-- **WHEN** calculating win rate for archetype for last 2 weeks (e.g. Legacy's "death_and_taxes")
+- **WHEN** calculating win rate for archetype for last 14 days (e.g. Legacy's "death_and_taxes")
 - **THEN** count matches where winner_id has decklist with archetype "death_and_taxes"
 - **AND** divide by total matches involving "death_and_taxes" decklists
 - **AND** return as percentage (0-100)
 
 #### Scenario: Calculate win rate with insufficient match data
-- **WHEN** calculating win rate for archetype with less than 5 matches
+- **WHEN** calculating win rate for archetype with less than 3 matches
 - **THEN** return null for win_rate
-- **AND** include sample_size field indicating insufficient data
+- **AND** include match_count field indicating insufficient data
 
 #### Scenario: Compare win rate between current and previous periods
 - **WHEN** calculating win rate change for archetype (e.g. dimir_frogtide)
-- **THEN** calculate win_rate_current for last 2 weeks
-- **AND** calculate win_rate_previous for 2-8 weeks ago
+- **THEN** calculate win_rate_current for last 14 days
+- **AND** calculate win_rate_previous for 14 days back from end of current period
 - **AND** return both values for comparison
 
 ### Requirement: Matchup Matrix Endpoint
@@ -119,9 +120,9 @@ The system SHALL provide a REST API endpoint that returns a matchup matrix showi
 
 #### Scenario: Get matchup matrix with insufficient match data
 - **WHEN** GET /api/v1/meta/matchups?format={format_name} is requested
-- **AND** a specific matchup has less than 5 matches
-- **THEN** return null for that matchup cell
-- **AND** include match_count in response metadata
+- **AND** a specific matchup has less than 3 matches
+- **THEN** return null for win_rate in that matchup cell
+- **AND** include match_count in each matchup cell
 
 #### Scenario: Request matchup matrix for format with no data
 - **WHEN** GET /api/v1/meta/matchups?format={format_name} is requested
@@ -138,14 +139,14 @@ The system SHALL filter tournament data by start_date timestamp to determine cur
 - **AND** calculate from current UTC timestamp
 
 #### Scenario: Filter tournaments by previous time window
-- **WHEN** previous_start_days is 56 and previous_end_days is 14
-- **THEN** include only tournaments where start_date is between 14-56 days ago
-- **AND** ensure no overlap with current time window
+- **WHEN** previous_days is 14 and current_days is 14
+- **THEN** include only tournaments where start_date is between 14-28 days ago
+- **AND** ensure no overlap with current time window (automatic)
 
-#### Scenario: Validate time window parameters
-- **WHEN** previous_end_days is greater than or equal to current_days
-- **THEN** return 400 Bad Request
-- **AND** error message explains time windows must not overlap
+#### Scenario: Non-overlapping time windows by design
+- **WHEN** any valid current_days and previous_days are provided
+- **THEN** previous period automatically ends where current period begins
+- **AND** no overlap validation needed (guaranteed by calculation logic)
 
 ### Requirement: API Response Format
 The system SHALL return JSON responses with consistent schema including data, metadata, and error information.

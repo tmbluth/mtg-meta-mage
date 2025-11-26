@@ -168,10 +168,10 @@ Archetype classification uses LLMs to automatically categorize decklists by anal
 
 ```bash
 # Initial load - classify all unclassified decklists
-uv run python src/etl/main.py --data-type archetypes --mode initial --model-provider azure_openai --batch-size 50
+uv run python src/etl/main.py --data-type archetypes --mode initial --model-provider azure_openai --prompt-id archetype_classification_v1
 
 # Incremental load - classify decklists from tournaments since last archetype load
-uv run python src/etl/main.py --data-type archetypes --mode incremental --model-provider azure_openai
+uv run python src/etl/main.py --data-type archetypes --mode incremental --model-provider azure_openai --prompt-id archetype_classification_v1
 ```
 
 **Example Classification Output:**
@@ -229,9 +229,8 @@ Get archetype rankings with meta share and win rates for a format.
 
 **Query Parameters:**
 - `format` (required): Tournament format (e.g., "Modern", "Pioneer", "Standard")
-- `current_days` (optional, default: 14): Number of days for current period
-- `previous_start_days` (optional, default: 56): Days ago for previous period start
-- `previous_end_days` (optional, default: 14): Days ago for previous period end
+- `current_days` (optional, default: 14): Number of days back from today for current period
+- `previous_days` (optional, default: 14): Number of days back from end of current period for previous period
 - `color_identity` (optional): Filter by color identity (e.g., "dimir", "jeskai")
 - `strategy` (optional): Filter by strategy ("aggro", "midrange", "control", "ramp", "combo")
 - `group_by` (optional): Group results by "color_identity" or "strategy"
@@ -263,12 +262,12 @@ curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern"
     "format": "Pioneer",
     "current_period": {
       "days": 14,
-      "start_date": "2025-11-10T00:00:00Z"
+      "start_date": "2025-11-10T00:00:00Z",
+      "end_date": "2025-11-24T00:00:00Z"
     },
     "previous_period": {
-      "start_days": 56,
-      "end_days": 14,
-      "start_date": "2025-09-29T00:00:00Z",
+      "days": 14,
+      "start_date": "2025-10-27T00:00:00Z",
       "end_date": "2025-11-10T00:00:00Z"
     },
     "timestamp": "2025-11-24T12:00:00Z"
@@ -287,8 +286,8 @@ curl "http://localhost:8000/api/v1/meta/archetypes?format=Pioneer&strategy=aggro
 # Group by color identity
 curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&group_by=color_identity"
 
-# Custom time windows (last 7 days vs 7-21 days ago)
-curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&current_days=7&previous_start_days=21&previous_end_days=7"
+# Custom time windows (last 7 days vs 14 days before that)
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&current_days=7&previous_days=14"
 ```
 
 #### GET /api/v1/meta/matchups
@@ -349,59 +348,13 @@ curl "http://localhost:8000/api/v1/meta/matchups?format=Modern"
 }
 ```
 
-**Note:** Win rates may be `null` for matchups with fewer than 5 matches (insufficient data).
+**Note:** Win rates may be `null` for matchups with fewer than 3 matches (insufficient data).
 
 **Custom Time Window Example:**
 ```bash
 # Last 30 days
 curl "http://localhost:8000/api/v1/meta/matchups?format=Pioneer&days=30"
 ```
-
-### API Error Responses
-
-All endpoints return standard error responses:
-
-**400 Bad Request:**
-```json
-{
-  "detail": {
-    "error": "Invalid Time Windows",
-    "message": "Time windows overlap: previous_end_days (15) must be less than current_days (14)"
-  }
-}
-```
-
-**404 Not Found:**
-```json
-{
-  "detail": {
-    "error": "No Data Available",
-    "message": "No archetype data found for format 'Vintage' in the specified time window"
-  }
-}
-```
-
-**500 Internal Server Error:**
-```json
-{
-  "detail": {
-    "error": "Internal Server Error",
-    "message": "An error occurred while processing the request"
-  }
-}
-```
-
-### Multi-Format Support
-
-The API dynamically supports all constructed, non-Commander formats in the database. Common formats include:
-- **Standard**: The current Standard rotation
-- **Modern**: Modern format
-- **Pioneer**: Pioneer format
-- **Legacy**: Legacy format
-- **Vintage**: Vintage format
-- **Pauper**: Pauper format
-
-No hardcoded format lists - the API queries available tournaments and returns data for any format present in the database.
 
 ## API Attribution
 
@@ -430,9 +383,11 @@ uv run pytest tests/test_your_file.py
 ```
 mtg-meta-mage/
 ├── src/
+│   ├── app/
+│   │   └── api/
 │   ├── database/
 │   ├── etl/
-│   └──── api_clients/
+│   │   └── api_clients/
 ├── tests/
 │   ├── unit/
 │   └── integration/

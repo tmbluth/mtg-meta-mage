@@ -210,19 +210,20 @@ class TestArchetypeRankings:
         with patch("src.app.api.services.meta_analysis.datetime") as mock_datetime:
             mock_datetime.now.return_value = fixed_now
             
-            current_start, previous_start, previous_end = service._calculate_time_windows(
+            current_start, current_end, previous_start, previous_end = service._calculate_time_windows(
                 current_days=14,
-                previous_start_days=56,
-                previous_end_days=14
+                previous_days=14
             )
             
-            # Current: last 14 days from fixed_now
-            expected_current = fixed_now - timedelta(days=14)
-            # Previous: 14-56 days ago
-            expected_previous_end = fixed_now - timedelta(days=14)
-            expected_previous_start = fixed_now - timedelta(days=56)
+            # Current: last 14 days (today - 14 days to today)
+            expected_current_end = fixed_now
+            expected_current_start = fixed_now - timedelta(days=14)
+            # Previous: 14 days before current period (today - 28 days to today - 14 days)
+            expected_previous_end = expected_current_start
+            expected_previous_start = expected_current_start - timedelta(days=14)
             
-            assert current_start == expected_current
+            assert current_start == expected_current_start
+            assert current_end == expected_current_end
             assert previous_start == expected_previous_start
             assert previous_end == expected_previous_end
 

@@ -174,8 +174,8 @@ class TestArchetypeRankingsIntegration:
 
     def test_get_archetype_rankings_with_time_window_filtering(self, sample_meta_data, api_client):
         """Test time window filtering works correctly."""
-        # Query with current period as last 10 days and valid previous window
-        response = api_client.get("/api/v1/meta/archetypes?format=Standard&current_days=10&previous_start_days=40&previous_end_days=10")
+        # Query with current period as last 10 days and previous period as 14 days before that
+        response = api_client.get("/api/v1/meta/archetypes?format=Standard&current_days=10&previous_days=14")
         
         assert response.status_code == 200
         data = response.json()
@@ -243,15 +243,15 @@ class TestArchetypeRankingsIntegration:
         data = response.json()
         assert "error" in data["detail"]
 
-    def test_get_archetype_rankings_overlapping_time_windows(self, sample_meta_data, api_client):
-        """Test that overlapping time windows return 400."""
+    def test_get_archetype_rankings_with_longer_previous_period(self, sample_meta_data, api_client):
+        """Test with a longer previous period for more historical data."""
         response = api_client.get(
-            "/api/v1/meta/archetypes?format=Standard&current_days=14&previous_end_days=15"
+            "/api/v1/meta/archetypes?format=Standard&current_days=14&previous_days=28"
         )
         
-        assert response.status_code == 400
+        assert response.status_code == 200
         data = response.json()
-        assert "overlap" in data["detail"]["message"].lower()
+        assert len(data["data"]) > 0
 
 
 @pytest.mark.integration

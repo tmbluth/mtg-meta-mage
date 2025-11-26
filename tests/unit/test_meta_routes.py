@@ -37,7 +37,7 @@ class TestArchetypeEndpoint:
             "metadata": {
                 "format": "Modern",
                 "current_period": {"days": 14},
-                "previous_period": {"start_days": 56, "end_days": 14},
+                "previous_period": {"days": 14},
             },
         }
         mock_service_class.return_value = mock_service
@@ -97,14 +97,13 @@ class TestArchetypeEndpoint:
         mock_service_class.return_value = mock_service
 
         response = client.get(
-            "/api/v1/meta/archetypes?format=Pioneer&current_days=7&previous_start_days=28&previous_end_days=7"
+            "/api/v1/meta/archetypes?format=Pioneer&current_days=7&previous_days=21"
         )
 
         assert response.status_code == 200
         call_kwargs = mock_service.get_archetype_rankings.call_args[1]
         assert call_kwargs["current_days"] == 7
-        assert call_kwargs["previous_start_days"] == 28
-        assert call_kwargs["previous_end_days"] == 7
+        assert call_kwargs["previous_days"] == 21
 
     def test_get_archetype_rankings_missing_format(self):
         """Test that missing format parameter returns 422."""
@@ -117,18 +116,24 @@ class TestArchetypeEndpoint:
         assert response.status_code == 422
 
     @patch("src.app.api.routes.meta_routes.MetaService")
-    def test_get_archetype_rankings_overlapping_time_windows(self, mock_service_class):
-        """Test that overlapping time windows return 400."""
+    def test_get_archetype_rankings_with_different_period_lengths(self, mock_service_class):
+        """Test with different current and previous period lengths."""
         mock_service = MagicMock()
+        mock_service.get_archetype_rankings.return_value = {
+            "data": [],
+            "metadata": {"format": "Modern"},
+        }
         mock_service_class.return_value = mock_service
 
-        # previous_end_days (10) >= current_days (14) causes overlap
+        # Current: 14 days, Previous: 30 days
         response = client.get(
-            "/api/v1/meta/archetypes?format=Modern&current_days=14&previous_end_days=15"
+            "/api/v1/meta/archetypes?format=Modern&current_days=14&previous_days=30"
         )
 
-        assert response.status_code == 400
-        assert "overlap" in response.json()["message"].lower()
+        assert response.status_code == 200
+        call_kwargs = mock_service.get_archetype_rankings.call_args[1]
+        assert call_kwargs["current_days"] == 14
+        assert call_kwargs["previous_days"] == 30
 
     @patch("src.app.api.routes.meta_routes.MetaService")
     def test_get_archetype_rankings_with_grouping(self, mock_service_class):

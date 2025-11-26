@@ -32,9 +32,8 @@ router = APIRouter()
 )
 async def get_archetype_rankings(
     format: str = Query(..., description="Tournament format (e.g., Modern, Pioneer, Standard)"),
-    current_days: int = Query(14, ge=1, le=365, description="Number of days for current period"),
-    previous_start_days: int = Query(56, ge=1, le=730, description="Days ago for previous period start"),
-    previous_end_days: int = Query(14, ge=1, le=730, description="Days ago for previous period end"),
+    current_days: int = Query(14, ge=1, le=365, description="Number of days back from today for current period"),
+    previous_days: int = Query(14, ge=1, le=365, description="Number of days back from end of current period for previous period"),
     color_identity: Optional[str] = Query(None, description="Filter by color identity"),
     strategy: Optional[str] = Query(None, description="Filter by strategy (aggro, midrange, control, ramp, combo)"),
     group_by: Optional[str] = Query(None, description="Group by field (color_identity, strategy)"),
@@ -49,16 +48,15 @@ async def get_archetype_rankings(
 
     Query Parameters:
     - format: Required. Tournament format (e.g., "Modern", "Pioneer")
-    - current_days: Days to include in current period (default: 14)
-    - previous_start_days: Start of previous period in days ago (default: 56)
-    - previous_end_days: End of previous period in days ago (default: 14)
+    - current_days: Days back from today for current period (default: 14)
+    - previous_days: Days back from end of current period for previous period (default: 14)
     - color_identity: Optional filter by color (e.g., "dimir", "jeskai")
     - strategy: Optional filter by strategy (aggro, midrange, control, ramp, combo)
     - group_by: Optional grouping (color_identity, strategy)
 
     Returns:
     - 200: Archetype rankings data with metadata
-    - 400: Invalid parameters (e.g., overlapping time windows)
+    - 400: Invalid parameters
     - 404: No data available for the format
     - 500: Internal server error
     """
@@ -67,30 +65,18 @@ async def get_archetype_rankings(
         params = ArchetypeQueryParams(
             format=format,
             current_days=current_days,
-            previous_start_days=previous_start_days,
-            previous_end_days=previous_end_days,
+            previous_days=previous_days,
             color_identity=color_identity,
             strategy=strategy,
             group_by=group_by,
         )
-
-        # Validate time windows don't overlap
-        try:
-            params.validate_time_windows()
-        except ValueError as e:
-            logger.warning(f"Time window validation error: {e}")
-            raise HTTPException(
-                status_code=400,
-                detail={"error": "Invalid Time Windows", "message": str(e)},
-            )
 
         # Get rankings from service
         service = MetaService()
         result = service.get_archetype_rankings(
             format=params.format,
             current_days=params.current_days,
-            previous_start_days=params.previous_start_days,
-            previous_end_days=params.previous_end_days,
+            previous_days=params.previous_days,
             color_identity=params.color_identity,
             strategy=params.strategy,
             group_by=params.group_by,

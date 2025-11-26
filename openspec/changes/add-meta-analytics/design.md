@@ -73,11 +73,11 @@ src/app/api/
 ```
 
 ### Decision 5: Default time windows
-**Why**: Provide sensible defaults while allowing customization. "Last 2 weeks" is a common competitive meta snapshot period, "2-8 weeks ago" provides 6-week comparison window.
+**Why**: Provide sensible defaults while allowing customization. "Last 2 weeks" is a common competitive meta snapshot period. Previous period is also 2 weeks for consistent comparison.
 
 **Default values**:
-- Current period: Last 2 weeks (14 days)
-- Previous period: 2-8 weeks ago (6 weeks, no overlap with current)
+- Current period: Last 2 weeks (14 days back from today)
+- Previous period: 2 weeks (14 days back from end of current period, no overlap)
 - Parameterized via query string for flexibility
 
 ### Decision 6: Win rate calculation from matches table

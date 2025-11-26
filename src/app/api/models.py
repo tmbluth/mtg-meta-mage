@@ -67,9 +67,8 @@ class ArchetypeQueryParams(BaseModel):
     """Query parameters for archetype rankings endpoint."""
 
     format: str = Field(..., description="Tournament format (e.g., Modern, Pioneer, Standard)")
-    current_days: int = Field(14, ge=1, le=365, description="Number of days for current period")
-    previous_start_days: int = Field(56, ge=1, le=730, description="Days ago for previous period start")
-    previous_end_days: int = Field(14, ge=1, le=730, description="Days ago for previous period end")
+    current_days: int = Field(14, ge=1, le=365, description="Number of days back from today for current period")
+    previous_days: int = Field(14, ge=1, le=365, description="Number of days back from end of current period for previous period")
     color_identity: Optional[str] = Field(None, description="Filter by color identity")
     strategy: Optional[str] = Field(None, description="Filter by strategy (aggro, midrange, control, ramp, combo)")
     group_by: Optional[str] = Field(None, description="Group results by field (color_identity, strategy)")
@@ -95,14 +94,6 @@ class ArchetypeQueryParams(BaseModel):
                 raise ValueError(f"group_by must be one of {allowed}")
             return v.lower()
         return v
-
-    def validate_time_windows(self) -> None:
-        """Validate that time windows do not overlap."""
-        if self.previous_end_days > self.current_days:
-            raise ValueError(
-                f"Time windows overlap: previous_end_days ({self.previous_end_days}) "
-                f"must be less than or equal to current_days ({self.current_days})"
-            )
 
 
 class MatchupQueryParams(BaseModel):

@@ -8,12 +8,9 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
 - Tournament data collection from TopDeck.gg API
 - LLM-powered archetype classification for decklists
 - Initial and incremental ETL pipelines for cards, tournaments, and archetypes
+- Meta analytics REST API with archetype rankings and matchup matrix
 
 **Future Features:**
-- Meta tracking analytics
-  - Compare 2 time windows for trends
-  - Archetype tier lists
-  - Archetype win rates
 - Get matchup specific coaching 
   - Select deck of interest and meta time window
   - Strongest/weakest cards against top tier decks
