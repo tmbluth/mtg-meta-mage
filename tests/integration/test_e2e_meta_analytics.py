@@ -16,37 +16,38 @@ logger = logging.getLogger(__name__)
 def sample_meta_data(test_database):
     """
     Create sample tournament, archetype, and match data for meta analytics tests.
-    
+
     Creates:
-    - 2 tournaments (1 recent, 1 older) in Modern format
-    - 3 archetype groups (amulet_titan, burn, elves)
+    - 2 tournaments (1 recent, 1 older) in Standard format
+    - 3 archetype groups from Standard metagame (esper_midrange, domain_ramp, boros_convoke)
     - 10 decklists across both tournaments
     - 15 matches with winners
     """
     with DatabaseConnection.transaction() as conn:
         cur = conn.cursor()
-        
-        # Create tournaments
+
+        # Use Standard format and current top archetypes
         now = datetime.now(timezone.utc)
         recent_date = now - timedelta(days=7)  # Within current period (last 14 days)
         older_date = now - timedelta(days=30)  # Within previous period (14-56 days ago)
-        
+
+        # Create tournaments in Standard format
         cur.execute("""
             INSERT INTO tournaments (tournament_id, tournament_name, format, start_date, swiss_num, top_cut)
             VALUES 
-                ('t1', 'Modern Tournament 1', 'Modern', %s, 5, 8),
-                ('t2', 'Modern Tournament 2', 'Modern', %s, 5, 8)
+                ('t1', 'Standard Showdown 1', 'Standard', %s, 5, 8),
+                ('t2', 'Standard Showdown 2', 'Standard', %s, 5, 8)
         """, (recent_date, older_date))
-        
-        # Create archetype groups
+
+        # Create Standard archetype groups (realistic, recent names)
         cur.execute("""
             INSERT INTO archetype_groups (archetype_group_id, format, main_title, color_identity, strategy)
             VALUES 
-                (1, 'Modern', 'amulet_titan', 'gruul', 'ramp'),
-                (2, 'Modern', 'burn', 'red', 'aggro'),
-                (3, 'Modern', 'elves', 'green', 'aggro')
+                (1, 'Standard', 'esper_midrange', 'esper', 'midrange'),
+                (2, 'Standard', 'domain_ramp', 'five_color', 'ramp'),
+                (3, 'Standard', 'boros_convoke', 'boros', 'aggro')
         """)
-        
+
         # Create players for tournament 1 (recent)
         players_t1 = []
         for i in range(1, 6):
@@ -56,7 +57,7 @@ def sample_meta_data(test_database):
                 INSERT INTO players (player_id, tournament_id, name, wins, losses, standing)
                 VALUES (%s, 't1', %s, 3, 2, %s)
             """, (player_id, f'Player {i}', i))
-        
+
         # Create players for tournament 2 (older)
         players_t2 = []
         for i in range(1, 6):
@@ -66,9 +67,9 @@ def sample_meta_data(test_database):
                 INSERT INTO players (player_id, tournament_id, name, wins, losses, standing)
                 VALUES (%s, 't2', %s, 3, 2, %s)
             """, (player_id, f'Player {i}', i))
-        
-        # Create decklists for tournament 1
-        # 3 amulet_titan, 1 burn, 1 elves
+
+        # Create decklists for tournament 1 (Standard Showdown 1)
+        # 3 esper_midrange, 1 domain_ramp, 1 boros_convoke
         cur.execute("""
             INSERT INTO decklists (player_id, tournament_id, archetype_group_id)
             VALUES 
@@ -78,9 +79,9 @@ def sample_meta_data(test_database):
                 ('t1_p4', 't1', 2),
                 ('t1_p5', 't1', 3)
         """)
-        
-        # Create decklists for tournament 2
-        # 2 amulet_titan, 2 burn, 1 elves
+
+        # Create decklists for tournament 2 (Standard Showdown 2)
+        # 2 esper_midrange, 2 domain_ramp, 1 boros_convoke
         cur.execute("""
             INSERT INTO decklists (player_id, tournament_id, archetype_group_id)
             VALUES 
@@ -90,8 +91,8 @@ def sample_meta_data(test_database):
                 ('t2_p4', 't2', 2),
                 ('t2_p5', 't2', 3)
         """)
-        
-        # Create match rounds
+
+        # Create match rounds for both tournaments
         cur.execute("""
             INSERT INTO match_rounds (round_number, tournament_id, round_description)
             VALUES 
@@ -102,29 +103,29 @@ def sample_meta_data(test_database):
                 (2, 't2', 'Round 2'),
                 (3, 't2', 'Round 3')
         """)
-        
-        # Create matches for tournament 1
-        # amulet_titan (p1) beats burn (p4)
-        # amulet_titan (p2) beats elves (p5)
-        # amulet_titan (p3) loses to burn (p4)
-        # amulet_titan (p1) beats amulet_titan (p2)
-        # burn (p4) beats elves (p5)
+
+        # Create matches for tournament 1 (Standard)
+        # esper_midrange (p1) beats boros_convoke (p5)
+        # esper_midrange (p2) beats domain_ramp (p4)
+        # esper_midrange (p3) loses to boros_convoke (p5)
+        # esper_midrange (p1) beats esper_midrange (p2)
+        # boros_convoke (p5) beats domain_ramp (p4)
         cur.execute("""
             INSERT INTO matches (round_number, tournament_id, match_num, player1_id, player2_id, winner_id, status)
             VALUES 
-                (1, 't1', 1, 't1_p1', 't1_p4', 't1_p1', 'completed'),
-                (1, 't1', 2, 't1_p2', 't1_p5', 't1_p2', 'completed'),
-                (2, 't1', 1, 't1_p3', 't1_p4', 't1_p4', 'completed'),
+                (1, 't1', 1, 't1_p1', 't1_p5', 't1_p1', 'completed'),
+                (1, 't1', 2, 't1_p2', 't1_p4', 't1_p2', 'completed'),
+                (2, 't1', 1, 't1_p3', 't1_p5', 't1_p5', 'completed'),
                 (2, 't1', 2, 't1_p1', 't1_p2', 't1_p1', 'completed'),
-                (3, 't1', 1, 't1_p4', 't1_p5', 't1_p4', 'completed')
+                (3, 't1', 1, 't1_p5', 't1_p4', 't1_p5', 'completed')
         """)
-        
-        # Create matches for tournament 2
-        # amulet_titan (p1) beats burn (p3)
-        # amulet_titan (p2) loses to burn (p4)
-        # burn (p3) beats elves (p5)
-        # amulet_titan (p1) beats amulet_titan (p2)
-        # burn (p3) beats burn (p4)
+
+        # Create matches for tournament 2 (Standard)
+        # esper_midrange (p1) beats domain_ramp (p3)
+        # esper_midrange (p2) loses to domain_ramp (p4)
+        # domain_ramp (p3) beats boros_convoke (p5)
+        # esper_midrange (p1) beats esper_midrange (p2)
+        # domain_ramp (p3) beats domain_ramp (p4)
         cur.execute("""
             INSERT INTO matches (round_number, tournament_id, match_num, player1_id, player2_id, winner_id, status)
             VALUES 
@@ -134,7 +135,7 @@ def sample_meta_data(test_database):
                 (2, 't2', 2, 't2_p1', 't2_p2', 't2_p1', 'completed'),
                 (3, 't2', 1, 't2_p3', 't2_p4', 't2_p3', 'completed')
         """)
-        
+
         cur.close()
 
 
@@ -150,7 +151,7 @@ class TestArchetypeRankingsIntegration:
 
     def test_get_archetype_rankings_with_real_data(self, sample_meta_data, api_client):
         """Test archetype rankings with real database data."""
-        response = api_client.get("/api/v1/meta/archetypes?format=Modern")
+        response = api_client.get("/api/v1/meta/archetypes?format=Standard")
         
         assert response.status_code == 200
         data = response.json()
@@ -173,8 +174,8 @@ class TestArchetypeRankingsIntegration:
 
     def test_get_archetype_rankings_with_time_window_filtering(self, sample_meta_data, api_client):
         """Test time window filtering works correctly."""
-        # Query with current period as last 7 days
-        response = api_client.get("/api/v1/meta/archetypes?format=Modern&current_days=7")
+        # Query with current period as last 10 days and valid previous window
+        response = api_client.get("/api/v1/meta/archetypes?format=Standard&current_days=10&previous_start_days=40&previous_end_days=10")
         
         assert response.status_code == 200
         data = response.json()
@@ -188,48 +189,49 @@ class TestArchetypeRankingsIntegration:
 
     def test_get_archetype_rankings_filter_by_color_identity(self, sample_meta_data, api_client):
         """Test filtering by color identity."""
-        response = api_client.get("/api/v1/meta/archetypes?format=Modern&color_identity=red")
+        response = api_client.get("/api/v1/meta/archetypes?format=Standard&color_identity=esper")
         
         assert response.status_code == 200
         data = response.json()
         
-        # Should only return burn archetype (red)
-        assert all(a["color_identity"] == "red" for a in data["data"])
-        assert any(a["main_title"] == "burn" for a in data["data"])
+        # Should only return esper_midrange archetype (esper)
+        assert all(a["color_identity"] == "esper" for a in data["data"])
+        assert any(a["main_title"] == "esper_midrange" for a in data["data"])
 
     def test_get_archetype_rankings_filter_by_strategy(self, sample_meta_data, api_client):
         """Test filtering by strategy."""
-        response = api_client.get("/api/v1/meta/archetypes?format=Modern&strategy=aggro")
+        response = api_client.get("/api/v1/meta/archetypes?format=Standard&strategy=aggro")
         
         assert response.status_code == 200
         data = response.json()
         
-        # Should only return aggro archetypes (burn, elves)
+        # Should only return aggro archetypes (boros_convoke)
         assert all(a["strategy"] == "aggro" for a in data["data"])
-        assert len(data["data"]) == 2
+        assert len(data["data"]) == 1
 
     def test_get_archetype_rankings_group_by_color_identity(self, sample_meta_data, api_client):
         """Test grouping by color identity."""
-        response = api_client.get("/api/v1/meta/archetypes?format=Modern&group_by=color_identity")
+        response = api_client.get("/api/v1/meta/archetypes?format=Standard&group_by=color_identity")
         
         assert response.status_code == 200
         data = response.json()
         
-        # Should have 3 groups: gruul, red, green
+        # Should have 3 groups: esper, five_color, boros
         color_identities = [a["color_identity"] for a in data["data"]]
-        assert "gruul" in color_identities
-        assert "red" in color_identities
-        assert "green" in color_identities
+        assert "esper" in color_identities
+        assert "five_color" in color_identities
+        assert "boros" in color_identities
 
     def test_get_archetype_rankings_group_by_strategy(self, sample_meta_data, api_client):
         """Test grouping by strategy."""
-        response = api_client.get("/api/v1/meta/archetypes?format=Modern&group_by=strategy")
+        response = api_client.get("/api/v1/meta/archetypes?format=Standard&group_by=strategy")
         
         assert response.status_code == 200
         data = response.json()
         
-        # Should have 2 groups: ramp, aggro
+        # Should have 3 groups: midrange, ramp, aggro
         strategies = [a["strategy"] for a in data["data"]]
+        assert "midrange" in strategies
         assert "ramp" in strategies
         assert "aggro" in strategies
 
@@ -244,7 +246,7 @@ class TestArchetypeRankingsIntegration:
     def test_get_archetype_rankings_overlapping_time_windows(self, sample_meta_data, api_client):
         """Test that overlapping time windows return 400."""
         response = api_client.get(
-            "/api/v1/meta/archetypes?format=Modern&current_days=14&previous_end_days=15"
+            "/api/v1/meta/archetypes?format=Standard&current_days=14&previous_end_days=15"
         )
         
         assert response.status_code == 400
@@ -258,7 +260,7 @@ class TestMatchupMatrixIntegration:
 
     def test_get_matchup_matrix_with_real_data(self, sample_meta_data, api_client):
         """Test matchup matrix with real database data."""
-        response = api_client.get("/api/v1/meta/matchups?format=Modern")
+        response = api_client.get("/api/v1/meta/matchups?format=Standard")
         
         assert response.status_code == 200
         data = response.json()
@@ -279,15 +281,15 @@ class TestMatchupMatrixIntegration:
                         assert 0 <= matchup["win_rate"] <= 100
 
     def test_get_matchup_matrix_specific_matchup(self, sample_meta_data, api_client):
-        """Test that specific matchup data is calculated correctly."""
-        response = api_client.get("/api/v1/meta/matchups?format=Modern&days=40")
+        """Test that specific Standard matchup data is calculated correctly."""
+        response = api_client.get("/api/v1/meta/matchups?format=Standard&days=40")
         
         assert response.status_code == 200
         data = response.json()
         
-        # Should have amulet_titan vs burn matchup
-        if "amulet_titan" in data["matrix"] and "burn" in data["matrix"]["amulet_titan"]:
-            matchup = data["matrix"]["amulet_titan"]["burn"]
+        # Should have esper_midrange vs boros_convoke matchup
+        if "esper_midrange" in data["matrix"] and "boros_convoke" in data["matrix"]["esper_midrange"]:
+            matchup = data["matrix"]["esper_midrange"]["boros_convoke"]
             assert matchup["match_count"] > 0
             # Win rate should be between 0 and 100 if there's enough data
             if matchup["win_rate"] is not None:
@@ -295,8 +297,8 @@ class TestMatchupMatrixIntegration:
 
     def test_get_matchup_matrix_custom_time_window(self, sample_meta_data, api_client):
         """Test matchup matrix with custom time window."""
-        # Only include last 7 days (should only have t1 matches)
-        response = api_client.get("/api/v1/meta/matchups?format=Modern&days=7")
+        # Include last 10 days (should capture t1 matches at 7 days ago)
+        response = api_client.get("/api/v1/meta/matchups?format=Standard&days=10")
         
         assert response.status_code == 200
         data = response.json()

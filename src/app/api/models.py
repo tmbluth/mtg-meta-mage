@@ -98,10 +98,10 @@ class ArchetypeQueryParams(BaseModel):
 
     def validate_time_windows(self) -> None:
         """Validate that time windows do not overlap."""
-        if self.previous_end_days >= self.current_days:
+        if self.previous_end_days > self.current_days:
             raise ValueError(
                 f"Time windows overlap: previous_end_days ({self.previous_end_days}) "
-                f"must be less than current_days ({self.current_days})"
+                f"must be less than or equal to current_days ({self.current_days})"
             )
 
 

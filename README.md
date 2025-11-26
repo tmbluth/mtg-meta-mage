@@ -246,21 +246,21 @@ curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern"
 {
   "data": [
     {
-      "main_title": "amulet_titan",
-      "color_identity": "gruul",
-      "strategy": "ramp",
-      "meta_share_current": 15.5,
-      "meta_share_previous": 12.0,
-      "win_rate_current": 52.3,
-      "win_rate_previous": 50.1,
-      "sample_size_current": 25,
-      "sample_size_previous": 20,
-      "match_count_current": 100,
-      "match_count_previous": 80
+      "main_title": "rakdos_midrange",
+      "color_identity": "rakdos",
+      "strategy": "midrange",
+      "meta_share_current": 18.2,
+      "meta_share_previous": 16.5,
+      "win_rate_current": 54.7,
+      "win_rate_previous": 52.9,
+      "sample_size_current": 30,
+      "sample_size_previous": 26,
+      "match_count_current": 120,
+      "match_count_previous": 95
     }
   ],
   "metadata": {
-    "format": "Modern",
+    "format": "Pioneer",
     "current_period": {
       "days": 14,
       "start_date": "2025-11-10T00:00:00Z"
@@ -308,30 +308,40 @@ curl "http://localhost:8000/api/v1/meta/matchups?format=Modern"
 ```json
 {
   "matrix": {
-    "amulet_titan": {
-      "burn": {
-        "win_rate": 55.0,
-        "match_count": 20
+    "delver": {
+      "mystic_forge": {
+        "win_rate": 48.0,
+        "match_count": 25
       },
-      "elves": {
-        "win_rate": 48.5,
-        "match_count": 15
+      "reanimator": {
+        "win_rate": 53.0,
+        "match_count": 18
       }
     },
-    "burn": {
-      "amulet_titan": {
-        "win_rate": 45.0,
-        "match_count": 20
-      },
-      "elves": {
+    "mystic_forge": {
+      "delver": {
         "win_rate": 52.0,
         "match_count": 25
+      },
+      "reanimator": {
+        "win_rate": 46.5,
+        "match_count": 20
+      }
+    },
+    "reanimator": {
+      "delver": {
+        "win_rate": 47.0,
+        "match_count": 18
+      },
+      "mystic_forge": {
+        "win_rate": 53.5,
+        "match_count": 20
       }
     }
   },
-  "archetypes": ["amulet_titan", "burn", "elves"],
+  "archetypes": ["delver", "mystic_forge", "reanimator"],
   "metadata": {
-    "format": "Modern",
+    "format": "Legacy",
     "days": 14,
     "start_date": "2025-11-10T00:00:00Z",
     "timestamp": "2025-11-24T12:00:00Z"

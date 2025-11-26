@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS players (
 -- Fields:
 --   archetype_group_id: Unique identifier for each archetype definition (primary key)
 --   format: Tournament format (e.g., "Modern", "Standard")
---   main_title: Archetype name based on key cards/themes (e.g., "amulet_titan", "elves")
+--   main_title: Archetype name based on key cards/themes (e.g., "storm", "merfolk")
 --   color_identity: Human-readable color description (e.g., "dimir", "jeskai", "colorless")
 --   strategy: One of "aggro", "midrange", "control", "ramp", or "combo"
 --   created_at: Timestamp when archetype group was first created

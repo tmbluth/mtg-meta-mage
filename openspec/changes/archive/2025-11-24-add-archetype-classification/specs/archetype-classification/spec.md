@@ -6,7 +6,7 @@
 The system SHALL store unique archetype definitions in an `archetype_groups` table with the following fields:
 - `archetype_group_id` (SERIAL, PRIMARY KEY): Unique identifier for each archetype definition
 - `format` (TEXT): Tournament format (e.g., "Modern", "Standard")
-- `main_title` (TEXT): Archetype name based on key cards/themes (e.g., "amulet_titan", "elves", "blink")
+- `main_title` (TEXT): Archetype name based on key cards/themes (e.g., "wilderness_rec", "elves", "blink")
 - `color_identity` (TEXT): Human-readable color description (e.g., "dimir", "jeskai", "colorless")
 - `strategy` (TEXT): One of "aggro", "midrange", "control", "ramp", or "combo" (enforced by CHECK constraint)
 - `created_at` (TIMESTAMP): Timestamp when archetype group was first created

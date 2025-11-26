@@ -235,6 +235,8 @@ class MetaService:
                 ag1.main_title as player_archetype,
                 ag2.archetype_group_id as opponent_archetype_id,
                 ag2.main_title as opponent_archetype,
+                m.player1_id,
+                m.player2_id,
                 m.winner_id,
                 t.start_date as tournament_date
             FROM matches m
@@ -258,6 +260,8 @@ class MetaService:
                     "player_archetype": [],
                     "opponent_archetype_id": [],
                     "opponent_archetype": [],
+                    "player1_id": [],
+                    "player2_id": [],
                     "winner_id": [],
                     "tournament_date": [],
                 })
@@ -290,7 +294,7 @@ class MetaService:
         # Group by archetype and calculate counts
         result = (
             df.group_by(["archetype_group_id", "main_title", "color_identity", "strategy"])
-            .agg([pl.count().alias("sample_size")])
+            .agg([pl.len().alias("sample_size")])
             .with_columns([(pl.col("sample_size") / total_decklists * 100).alias("meta_share")])
             .sort("meta_share", descending=True)
         )
@@ -339,7 +343,7 @@ class MetaService:
             all_matches.group_by(["archetype_group_id", "main_title"])
             .agg([
                 pl.col("is_win").sum().alias("wins"),
-                pl.count().alias("match_count"),
+                pl.len().alias("match_count"),
             ])
             .with_columns([
                 pl.when(pl.col("match_count") >= min_matches)
@@ -448,13 +452,20 @@ class MetaService:
         Returns:
             DataFrame grouped by color_identity
         """
-        return df.group_by("color_identity").agg([
+        grouped = df.group_by("color_identity").agg([
             pl.col("meta_share_current").sum().alias("meta_share_current"),
             pl.col("sample_size_current").sum().alias("sample_size_current"),
             pl.col("meta_share_previous").sum().alias("meta_share_previous"),
             pl.col("sample_size_previous").sum().alias("sample_size_previous"),
             pl.col("win_rate_current").mean().alias("win_rate_current"),
             pl.col("win_rate_previous").mean().alias("win_rate_previous"),
+            pl.col("match_count_current").sum().alias("match_count_current"),
+            pl.col("match_count_previous").sum().alias("match_count_previous"),
+        ])
+        # Add placeholder for required fields that were dropped during grouping
+        return grouped.with_columns([
+            pl.lit("grouped").alias("main_title"),
+            pl.col("color_identity").alias("strategy"),  # Use color_identity as strategy placeholder
         ])
 
     def _group_by_strategy(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -467,13 +478,20 @@ class MetaService:
         Returns:
             DataFrame grouped by strategy
         """
-        return df.group_by("strategy").agg([
+        grouped = df.group_by("strategy").agg([
             pl.col("meta_share_current").sum().alias("meta_share_current"),
             pl.col("sample_size_current").sum().alias("sample_size_current"),
             pl.col("meta_share_previous").sum().alias("meta_share_previous"),
             pl.col("sample_size_previous").sum().alias("sample_size_previous"),
             pl.col("win_rate_current").mean().alias("win_rate_current"),
             pl.col("win_rate_previous").mean().alias("win_rate_previous"),
+            pl.col("match_count_current").sum().alias("match_count_current"),
+            pl.col("match_count_previous").sum().alias("match_count_previous"),
+        ])
+        # Add placeholder for required fields that were dropped during grouping
+        return grouped.with_columns([
+            pl.lit("grouped").alias("main_title"),
+            pl.col("strategy").alias("color_identity"),  # Use strategy as color_identity placeholder
         ])
 
     def _calculate_matchup_matrix(self, df: pl.DataFrame, min_matches: int = 5) -> dict:
@@ -513,7 +531,7 @@ class MetaService:
             all_matchups.group_by(["player_archetype", "opponent_archetype"])
             .agg([
                 pl.col("is_win").sum().alias("wins"),
-                pl.count().alias("match_count"),
+                pl.len().alias("match_count"),
             ])
             .with_columns([
                 pl.when(pl.col("match_count") >= min_matches)

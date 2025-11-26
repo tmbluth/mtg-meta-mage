@@ -174,16 +174,16 @@ class TestMatchupEndpoint:
         mock_service = MagicMock()
         mock_service.get_matchup_matrix.return_value = {
             "matrix": {
-                "amulet_titan": {
-                    "burn": {"win_rate": 55.0, "match_count": 20},
-                    "elves": {"win_rate": 48.5, "match_count": 15},
+                "rhinos": {
+                    "scam": {"win_rate": 60.0, "match_count": 18},
+                    "yawgmoth": {"win_rate": 49.5, "match_count": 12},
                 },
-                "burn": {
-                    "amulet_titan": {"win_rate": 45.0, "match_count": 20},
-                    "elves": {"win_rate": 52.0, "match_count": 25},
+                "scam": {
+                    "rhinos": {"win_rate": 40.0, "match_count": 18},
+                    "yawgmoth": {"win_rate": 55.0, "match_count": 17},
                 },
             },
-            "archetypes": ["amulet_titan", "burn"],
+            "archetypes": ["rhinos", "scam"],
             "metadata": {"format": "Modern", "days": 14},
         }
         mock_service_class.return_value = mock_service
@@ -195,8 +195,8 @@ class TestMatchupEndpoint:
         assert "matrix" in data
         assert "archetypes" in data
         assert "metadata" in data
-        assert "amulet_titan" in data["matrix"]
-        assert "burn" in data["matrix"]["amulet_titan"]
+        assert "rhinos" in data["matrix"]
+        assert "scam" in data["matrix"]["rhinos"]
 
     @patch("src.app.api.routes.meta_routes.MetaService")
     def test_get_matchup_matrix_with_custom_days(self, mock_service_class):

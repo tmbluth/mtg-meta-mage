@@ -73,7 +73,7 @@ The system SHALL calculate meta share as the percentage of decklists with the ar
 
 #### Scenario: Calculate meta share for archetype in current period
 - **WHEN** calculating meta share for any format for last 2 weeks
-- **THEN** count decklists with archetype_group_id matching each archetype (e.g. "amulet_titan", "burn", etc)
+- **THEN** count decklists with archetype_group_id matching each archetype (e.g. "neoform", "burn", etc)
 - **AND** divide by total Modern decklists in last 2 weeks
 - **AND** return as percentage (0-100)
 
