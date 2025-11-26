@@ -178,11 +178,11 @@ decklists.decklist_id → deck_cards (section='mainboard') → cards → LLM pro
 **Expected Response:**
 ```json
 {
-  "main_title": "amulet_titan",
-  "color_identity": "gruul",
+  "main_title": "lotus_field_combo",
+  "color_identity": "sultai",
   "strategy": "combo",
-  "confidence": 0.95,
-  "reasoning": "Deck focuses on Amulet of Vigor + bounce lands combo to ramp into Primeval Titan."
+  "confidence": 0.97,
+  "reasoning": "Focused on ramping with Lotus Field, untapping it with Hidden Strings and Pour Over the Pages to generate mana for a win via Approach of the Second Sun or alternative finishers."
 }
 ```
 

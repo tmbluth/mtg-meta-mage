@@ -168,10 +168,10 @@ Archetype classification uses LLMs to automatically categorize decklists by anal
 
 ```bash
 # Initial load - classify all unclassified decklists
-uv run python src/etl/main.py --data-type archetypes --mode initial --model-provider azure_openai --batch-size 50
+uv run python src/etl/main.py --data-type archetypes --mode initial --model-provider azure_openai --prompt-id archetype_classification_v1
 
 # Incremental load - classify decklists from tournaments since last archetype load
-uv run python src/etl/main.py --data-type archetypes --mode incremental --model-provider azure_openai
+uv run python src/etl/main.py --data-type archetypes --mode incremental --model-provider azure_openai --prompt-id archetype_classification_v1
 ```
 
 **Example Classification Output:**
@@ -188,6 +188,173 @@ confidence: 0.95
 - Run `--mode initial` to reclassify existing decklists with new model/prompt
 - Historical classifications are preserved in `archetype_classifications` table
 - Each decklist's `archetype_group_id` is updated to the latest classification
+
+## Meta Analytics API
+
+The Meta Analytics API provides REST endpoints for querying archetype performance and matchup data across all constructed formats.
+
+### Starting the API Server
+
+Start the FastAPI server using uvicorn:
+
+```bash
+# Development mode with auto-reload
+uv run uvicorn src.app.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# Production mode
+uv run uvicorn src.app.api.main:app --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000`. OpenAPI documentation is available at:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+### API Endpoints
+
+#### GET /health
+
+Health check endpoint to verify API is running.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-11-24T12:00:00Z"
+}
+```
+
+#### GET /api/v1/meta/archetypes
+
+Get archetype rankings with meta share and win rates for a format.
+
+**Query Parameters:**
+- `format` (required): Tournament format (e.g., "Modern", "Pioneer", "Standard")
+- `current_days` (optional, default: 14): Number of days back from today for current period
+- `previous_days` (optional, default: 14): Number of days back from end of current period for previous period
+- `color_identity` (optional): Filter by color identity (e.g., "dimir", "jeskai")
+- `strategy` (optional): Filter by strategy ("aggro", "midrange", "control", "ramp", "combo")
+- `group_by` (optional): Group results by "color_identity" or "strategy"
+
+**Example Request:**
+```bash
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern"
+```
+
+**Example Response:**
+```json
+{
+  "data": [
+    {
+      "main_title": "rakdos_midrange",
+      "color_identity": "rakdos",
+      "strategy": "midrange",
+      "meta_share_current": 18.2,
+      "meta_share_previous": 16.5,
+      "win_rate_current": 54.7,
+      "win_rate_previous": 52.9,
+      "sample_size_current": 30,
+      "sample_size_previous": 26,
+      "match_count_current": 120,
+      "match_count_previous": 95
+    }
+  ],
+  "metadata": {
+    "format": "Pioneer",
+    "current_period": {
+      "days": 14,
+      "start_date": "2025-11-10T00:00:00Z",
+      "end_date": "2025-11-24T00:00:00Z"
+    },
+    "previous_period": {
+      "days": 14,
+      "start_date": "2025-10-27T00:00:00Z",
+      "end_date": "2025-11-10T00:00:00Z"
+    },
+    "timestamp": "2025-11-24T12:00:00Z"
+  }
+}
+```
+
+**Filtering Examples:**
+```bash
+# Filter by color identity
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&color_identity=red"
+
+# Filter by strategy
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Pioneer&strategy=aggro"
+
+# Group by color identity
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&group_by=color_identity"
+
+# Custom time windows (last 7 days vs 14 days before that)
+curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&current_days=7&previous_days=14"
+```
+
+#### GET /api/v1/meta/matchups
+
+Get matchup matrix showing head-to-head win rates between archetypes.
+
+**Query Parameters:**
+- `format` (required): Tournament format (e.g., "Modern", "Pioneer", "Standard")
+- `days` (optional, default: 14): Number of days to include in analysis
+
+**Example Request:**
+```bash
+curl "http://localhost:8000/api/v1/meta/matchups?format=Modern"
+```
+
+**Example Response:**
+```json
+{
+  "matrix": {
+    "delver": {
+      "mystic_forge": {
+        "win_rate": 48.0,
+        "match_count": 25
+      },
+      "reanimator": {
+        "win_rate": 53.0,
+        "match_count": 18
+      }
+    },
+    "mystic_forge": {
+      "delver": {
+        "win_rate": 52.0,
+        "match_count": 25
+      },
+      "reanimator": {
+        "win_rate": 46.5,
+        "match_count": 20
+      }
+    },
+    "reanimator": {
+      "delver": {
+        "win_rate": 47.0,
+        "match_count": 18
+      },
+      "mystic_forge": {
+        "win_rate": 53.5,
+        "match_count": 20
+      }
+    }
+  },
+  "archetypes": ["delver", "mystic_forge", "reanimator"],
+  "metadata": {
+    "format": "Legacy",
+    "days": 14,
+    "start_date": "2025-11-10T00:00:00Z",
+    "timestamp": "2025-11-24T12:00:00Z"
+  }
+}
+```
+
+**Note:** Win rates may be `null` for matchups with fewer than 3 matches (insufficient data).
+
+**Custom Time Window Example:**
+```bash
+# Last 30 days
+curl "http://localhost:8000/api/v1/meta/matchups?format=Pioneer&days=30"
+```
 
 ## API Attribution
 
@@ -216,9 +383,11 @@ uv run pytest tests/test_your_file.py
 ```
 mtg-meta-mage/
 ├── src/
+│   ├── app/
+│   │   └── api/
 │   ├── database/
 │   ├── etl/
-│   └──── api_clients/
+│   │   └── api_clients/
 ├── tests/
 │   ├── unit/
 │   └── integration/

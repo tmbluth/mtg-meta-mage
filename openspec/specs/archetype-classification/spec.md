@@ -1,7 +1,8 @@
-# archetype-classification Specification Delta
+# archetype-classification Specification
 
-## ADDED Requirements
-
+## Purpose
+TBD - created by archiving change add-archetype-classification. Update Purpose after archive.
+## Requirements
 ### Requirement: Archetype Groups Storage
 The system SHALL store unique archetype definitions in an `archetype_groups` table with the following fields:
 - `archetype_group_id` (SERIAL, PRIMARY KEY): Unique identifier for each archetype definition

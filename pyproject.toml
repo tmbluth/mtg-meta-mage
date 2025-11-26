@@ -15,6 +15,9 @@ dependencies = [
     "langchain-openai>=1.0.3",
     "langchain-anthropic>=1.1.0",
     "langchain-aws>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "polars>=1.13.0",
 ]
 
 [build-system]
