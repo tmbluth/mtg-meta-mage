@@ -11,11 +11,11 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
 - Meta analytics REST API with archetype rankings and matchup matrix
 
 **Future Features:**
-- Get matchup specific coaching 
-  - Select deck of interest and meta time window
+- Get decklist analysis 
+  - Submit deck and select meta time window
   - Strongest/weakest cards against top tier decks
-  - Sideboard guide against top tier decks
-- Decklist optimization:
+  - Deck piloting guide for selected meta
+- Update decklist
   - Submit deck and select meta time window
   - Update maindeck flex spots for selected meta
   - Update sideboard for the selected meta
