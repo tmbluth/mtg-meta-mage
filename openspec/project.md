@@ -19,6 +19,9 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
   - Submit deck and select meta time window
   - Update maindeck flex spots for selected meta
   - Update sideboard for the selected meta
+- User Interface
+  - Meta analytics displayed 
+  - Chat 
 
 ## Tech Stack
 - **Language**: Python 3.11+
