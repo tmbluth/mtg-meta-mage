@@ -1,22 +1,23 @@
 ## Context
-MTG Meta Mage has tournament data, card data, archetype classifications, and meta analytics. The next step is enabling conversational AI coaching—helping users understand their deck's strengths, weaknesses, and how to pilot it against the current meta. This requires:
-1. A way to expose analytical tools to an LLM (MCP)
-2. An agent framework for multi-step reasoning (LangGraph)
-3. API endpoints for chat interactions
+MTG Meta Mage has tournament data, card data, archetype classifications, and meta analytics. The next step is enabling AI-powered deck coaching by exposing capabilities through standardized MCP tools. This requires:
+1. A way to expose analytical tools to any MCP client or LLM (MCP server)
+2. Modular, discoverable tools that can be composed by AI agents
+3. Seamless integration with existing FastAPI routes
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Enable users to submit a decklist and receive comprehensive coaching
+- Expose deck analysis capabilities through standardized MCP tools
 - Leverage existing meta analytics and matchup data
 - Create modular, discoverable tools via MCP protocol
-- Support conversational follow-ups about specific matchups
-- Extract shared utilities to avoid code duplication between ETL and agent services
+- Enable any MCP client to use these tools (Claude Desktop, custom agents, app API, etc.)
+- Extract shared utilities to avoid code duplication between ETL and application services
 
 **Non-Goals:**
-- Building a full chat UI (future scope)
+- Building a specific agent implementation
+- Creating a chat UI (out of scope)
 - Real-time deck modification suggestions (separate feature)
-- Storing chat history/sessions (v1 is stateless per request)
+- Storing analysis history/sessions (tools are stateless)
 - Supporting non-constructed formats
 
 ## Decisions
@@ -28,21 +29,15 @@ MTG Meta Mage has tournament data, card data, archetype classifications, and met
 - Raw MCP SDK: More verbose, lower-level control not needed
 - Custom tool protocol: Would reinvent what MCP standardizes
 
-### Decision 2: Use LangChain MCP Adapters for Tool Integration
-**What:** Use `langchain-mcp-adapters` to convert MCP tools into LangChain/LangGraph-compatible tools.
-**Why:** This is the [official LangChain package](https://github.com/langchain-ai/langchain-mcp-adapters) for MCP integration. It handles tool conversion, multiple server connections, and seamlessly integrates with the hundreds of existing MCP tool servers.
+### Decision 2: Use LangChain MCP Adapters for FastAPI Integration
+**What:** Use `langchain-mcp-adapters` `MultiServerMCPClient` to call MCP tools from FastAPI routes over HTTP.
+**Why:** Provides clean async interface for calling MCP tools from Python. Handles connection management, error handling, and JSON serialization. Part of official LangChain ecosystem. HTTP-only approach simplifies code and prepares for future separation of MCP server into its own repository.
 **Alternatives:**
-- Custom MCP client: Would reinvent what langchain-mcp-adapters already provides
-- Direct tool implementation: Loses modularity and MCP ecosystem benefits
+- Raw MCP client: More verbose, lower-level than needed
+- Custom wrapper: Would reinvent connection pooling and error handling
+- Direct FastMCP calls: Would couple API routes to MCP server implementation, making future separation difficult
 
-### Decision 3: Use LangGraph StateGraph for Agent Orchestration
-**What:** Use LangGraph's `StateGraph` with `ToolNode` and `tools_condition` to build the agent workflow.
-**Why:** LangGraph provides graph-based workflows that are easier to debug and modify than chain-based approaches. The `langchain-mcp-adapters` package provides direct integration with LangGraph's `ToolNode`.
-**Alternatives:**
-- LangChain AgentExecutor: Less flexible for complex workflows
-- Custom agent loop: More maintenance burden
-
-### Decision 4: MCP Server as Business Logic Layer (No Service Layer)
+### Decision 3: MCP Server as Business Logic Layer (No Service Layer)
 **What:** Delete `meta_analysis.py` service. Move all MetaService logic into MCP tools. FastAPI routes call MCP directly via `MultiServerMCPClient`.
 **Why:** 
 - MCP is the source of truth—both REST API and agents use same capabilities
@@ -54,23 +49,23 @@ MTG Meta Mage has tournament data, card data, archetype classifications, and met
 - Keep thin service layer: Adds ceremony without value, extra indirection
 - Both layers have logic: Duplication, unclear source of truth
 
-### Decision 5: Extract Shared Utils to `src/core_utils.py`
+### Decision 4: Extract Shared Utils to `src/core_utils.py`
 **What:** Move `normalize_card_name`, `parse_decklist`, and `find_fuzzy_card_match` from `src/etl/utils.py` to a new `src/core_utils.py`. Rename remaining file to `src/etl/etl_utils.py`.
 **Why:** These functions are needed by both ETL pipelines and MCP tools. Avoids circular imports and clarifies which utilities are ETL-specific vs. shared.
 **Alternatives:**
 - Keep in etl/utils.py: Would create dependency from app→etl, breaking layering
 - Duplicate code: Violates DRY, maintenance burden
 
-### Decision 6: Required User Inputs for Analysis
-**What:** Users must provide: (1) time range for meta context, (2) decklist text, (3) archetype classification (from dropdown populated with format's archetypes + "other").
-**Why:** Time range scopes the meta data. Decklist is the subject of analysis. Archetype selection enables matchup lookup without LLM classification step (faster, cheaper).
+### Decision 6: Move API Clients to Shared `src/clients/` Directory
+**What:** Move `src/etl/api_clients/` (LLM, Scryfall, TopDeck clients) to `src/clients/` as shared infrastructure.
+**Why:** Both ETL pipelines and MCP tools need these clients. Moving them to a shared location prevents app→etl dependency and prepares for future separation of MCP server. Clean dependency graph: both app and etl depend on clients, not each other.
 **Alternatives:**
-- Auto-classify archetype: Adds LLM call, latency, cost
-- No archetype: Can't provide matchup-specific advice
+- Keep in etl/api_clients: Creates app→etl dependency, violates layering
+- Duplicate clients: Violates DRY, maintenance burden
 
-### Decision 7: MCP Tool Structure
-**What:** Single `deck_analysis_tool` exposes multiple operations: `get_card_details`, `get_deck_synergies`, `get_meta_matchups`, `get_piloting_advice`.
-**Why:** Groups related functionality logically. MCP server advertises capabilities that the agent selects from.
+### Decision 5: MCP Tool Structure
+**What:** Separate tool modules for distinct concerns: `meta_research_tools` (format-wide queries) and `deck_coaching_tools` (deck-specific analysis with operations: `parse_and_validate_decklist`, `get_deck_matchup_stats`, `generate_matchup_strategy`).
+**Why:** Groups related functionality logically. MCP server advertises capabilities that clients can discover and compose.
 **Alternatives:**
 - Separate tools per function: More granular but chattier MCP protocol
 - Single monolithic analysis: Less flexible for partial queries
@@ -82,32 +77,29 @@ MTG Meta Mage has tournament data, card data, archetype classifications, and met
 │                    FastAPI Application                           │
 │  Routes call MCP tools directly (no service layer)               │
 ├─────────────────────────────────────────────────────────────────┤
-│  /api/v1/meta/archetypes  → MCP meta_analytics_tool             │
-│  /api/v1/meta/matchups    → MCP meta_analytics_tool             │
-│  /api/v1/agent/capabilities → MCP capabilities list             │
-│  /api/v1/agent/analyze    → LangGraph agent → MCP tools         │
+│  /api/v1/meta/archetypes  → MCP meta_research_tools             │
+│  /api/v1/meta/matchups    → MCP meta_research_tools             │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
-                            │ (Both use langchain-mcp-adapters)
+                            │ (langchain-mcp-adapters)
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │              langchain-mcp-adapters (MultiServerMCPClient)       │
-│  - REST routes: call_tool() directly                             │
-│  - Agent: loads tools for StateGraph/ToolNode                    │
+│  - call_tool() interface for async MCP calls                     │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                  MCP Server (FastMCP) - Business Logic           │
 ├─────────────────────────────────────────────────────────────────┤
-│  tools/meta_analytics_tool.py (@mcp.tool):                       │
-│    ├─ get_archetype_rankings() → meta share, win rates          │
-│    └─ get_matchup_matrix() → head-to-head matchups              │
+│  tools/meta_research_tools.py (@mcp.tool):                       │
+│    ├─ get_format_meta_rankings() → meta share, win rates        │
+│    └─ get_format_matchup_stats() → head-to-head matchups        │
 │                                                                   │
-│  tools/deck_analysis_tool.py (@mcp.tool):                        │
-│    ├─ get_card_details(decklist) → enriched card data           │
-│    ├─ get_meta_matchups(archetype, format) → matchup data       │
-│    └─ get_piloting_advice(deck, matchups) → LLM coaching        │
+│  tools/deck_coaching_tools.py (@mcp.tool):                       │
+│    ├─ parse_and_validate_decklist(decklist) → enriched cards    │
+│    ├─ get_deck_matchup_stats(archetype, format) → matchup data  │
+│    └─ generate_matchup_strategy(deck, matchups) → LLM coaching  │
 │                                                                   │
 │  prompts/coaching_prompt.py → LLM prompt template                │
 └───────────────────────────┬─────────────────────────────────────┘
@@ -117,7 +109,12 @@ MTG Meta Mage has tournament data, card data, archetype classifications, and met
 │                    Database & Core Utils                         │
 │  - DatabaseConnection (PostgreSQL queries)                       │
 │  - core_utils (parse_decklist, normalize_card_name)              │
+│  - clients/ (LLM, Scryfall, TopDeck API clients)                 │
 └─────────────────────────────────────────────────────────────────┘
+
+External MCP Clients (Claude Desktop, custom agents, etc.)
+     │
+     └─→ Can connect to MCP server and use tools directly
 ```
 
 **Key Points:**
@@ -125,22 +122,55 @@ MTG Meta Mage has tournament data, card data, archetype classifications, and met
 2. **No service layer** - FastAPI routes call MCP directly via `MultiServerMCPClient`
 3. **Single codebase deployment** - Both servers in same codebase, easily separable later
 4. **Protocol-first** - Everything exposed via standard MCP protocol
+5. **Client-agnostic** - Any MCP client can use these tools (not just our FastAPI app)
 
 ## Code Patterns
 
-### Pattern 1: REST Routes Call MCP Directly
+### Pattern 1: REST Routes Call MCP via HTTP Client
 
 ```python
-# src/app/api/routes/meta_routes.py
+# src/app/api/services/mcp_client.py
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-# Module-level MCP client (initialized once)
-_mcp_client = MultiServerMCPClient({
-    "meta_analytics": {
-        "url": "http://localhost:8000/mcp",
-        "transport": "streamable_http",
-    }
-})
+_mcp_client: Optional[MultiServerMCPClient] = None
+_tools_cache: Optional[dict] = None
+
+def get_mcp_client() -> MultiServerMCPClient:
+    """Get or create the shared MCP client instance."""
+    global _mcp_client
+    if _mcp_client is None:
+        _mcp_client = MultiServerMCPClient({
+            "meta_analytics": {
+                "transport": "streamable_http",
+                "url": os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp"),
+            }
+        })
+    return _mcp_client
+
+async def _get_tools() -> dict:
+    """Get all MCP tools and cache them by name."""
+    global _tools_cache
+    if _tools_cache is None:
+        client = get_mcp_client()
+        tools = await client.get_tools(server_name="meta_analytics")
+        if len(tools) == 0:
+            # Try session-based discovery as fallback
+            async with client.session("meta_analytics") as session:
+                from langchain_mcp_adapters.tools import load_mcp_tools
+                tools = await load_mcp_tools(session)
+        _tools_cache = {tool.name: tool for tool in tools}
+    return _tools_cache
+
+async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
+    """Call an MCP tool via the HTTP client."""
+    tools = await _get_tools()
+    tool = tools.get(tool_name)
+    if tool is None:
+        raise KeyError(f"Tool '{tool_name}' not found")
+    return await tool.ainvoke(arguments)
+
+# src/app/api/routes/meta_routes.py
+from src.app.api.services.mcp_client import call_mcp_tool
 
 @router.get("/archetypes")
 async def get_archetype_rankings(
@@ -149,9 +179,8 @@ async def get_archetype_rankings(
     ...
 ) -> ArchetypeRankingsResponse:
     """Get archetype rankings with meta share and win rate."""
-    result = await _mcp_client.call_tool(
-        "meta_analytics",
-        "get_archetype_rankings",
+    result = await call_mcp_tool(
+        "get_format_meta_rankings",
         arguments={"format": format, "current_days": current_days, ...}
     )
     
@@ -164,7 +193,7 @@ async def get_archetype_rankings(
 ### Pattern 2: MCP Tools Contain Business Logic
 
 ```python
-# src/app/mcp/tools/meta_analytics_tool.py
+# src/app/mcp/tools/meta_research_tools.py
 from fastmcp import FastMCP
 import polars as pl
 from src.database.connection import DatabaseConnection
@@ -172,7 +201,7 @@ from src.database.connection import DatabaseConnection
 mcp = FastMCP("meta-analytics")
 
 @mcp.tool()
-def get_archetype_rankings(
+def get_format_meta_rankings(
     format: str,
     current_days: int = 14,
     previous_days: int = 14,
@@ -184,58 +213,57 @@ def get_archetype_rankings(
     return {"data": [...], "metadata": {...}}
 ```
 
-### Pattern 3: LangGraph Agent Uses MCP Tools
+### Pattern 3: MCP Tools Are Discoverable
 
 ```python
-# src/app/api/services/agent.py
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langgraph.graph import StateGraph, MessagesState, START
-from langgraph.prebuilt import ToolNode, tools_condition
-
-async def create_agent():
-    client = MultiServerMCPClient({
-        "deck_analysis": {
-            "url": "http://localhost:8000/mcp",
-            "transport": "streamable_http",
-        }
-    })
-    tools = await client.get_tools()
-    
-    builder = StateGraph(MessagesState)
-    builder.add_node(call_model)
-    builder.add_node(ToolNode(tools))
-    builder.add_conditional_edges("call_model", tools_condition)
-    
-    return builder.compile()
+# Any MCP client can discover available tools
+# Example: Claude Desktop, custom agent, etc.
+{
+  "tools": [
+    {
+      "name": "get_format_meta_rankings",
+      "description": "Get format-wide meta rankings showing which archetypes are most played",
+      "inputSchema": {...}
+    },
+    {
+      "name": "get_format_matchup_stats",
+      "description": "Get complete matchup statistics for ALL archetypes in a format",
+      "inputSchema": {...}
+    },
+    {
+      "name": "parse_and_validate_decklist",
+      "description": "Parse a decklist and enrich with card details",
+      "inputSchema": {...}
+    }
+  ]
+}
 ```
 
 ## Data Flow
 
-### REST API Flow (Existing Endpoints)
+### REST API Flow
 1. Client calls `/api/v1/meta/archetypes?format=Modern`
-2. Route calls `_mcp_client.call_tool("meta_analytics", "get_archetype_rankings", ...)`
+2. Route calls `_mcp_client.call_tool("meta_analytics", "get_format_meta_rankings", ...)`
 3. MCP tool queries database, calculates metrics with polars
 4. Returns JSON directly to route → client
 
-### Agent Flow (New)
-1. **Initialization**: Client calls `/api/v1/agent/capabilities` → lists MCP tools
-2. **Analysis Request**: User submits decklist + time range + archetype to `/api/v1/agent/analyze`
-3. **Agent Orchestration**: LangGraph StateGraph executes:
-   - `get_card_details` tool → parses decklist, enriches from cards table
-   - `get_meta_matchups` tool → calls meta_analytics tool for matchup matrix
-   - `get_piloting_advice` tool → LLM analyzes deck + matchups, returns coaching
-4. **Response**: Structured analysis returned to client
+### External MCP Client Flow (e.g., Claude Desktop)
+1. **Discovery**: Client lists available MCP tools from server
+2. **Tool Invocation**: User asks "What are the top Modern archetypes?"
+3. **AI Agent**: Decides to call `get_format_meta_rankings` tool
+4. **MCP Server**: Executes tool, queries database, returns data
+5. **AI Agent**: Synthesizes natural language response for user
 
-**Key Point**: Both flows use same MCP tools, ensuring consistent business logic.
+**Key Point**: Same tools serve both REST API and external clients.
 
 ## Risks / Trade-offs
 
 | Risk | Mitigation |
 |------|------------|
-| MCP adds complexity | Start with single tool, expand incrementally |
-| LLM costs for synergy/coaching | Cache common analyses, use smaller models for classification |
+| MCP adds complexity | Start with simple tools, expand incrementally |
+| LLM costs for coaching prompts | Tools are stateless, clients control LLM usage |
 | Import refactoring breaks ETL | Update all import paths atomically, run full test suite |
-| Agent hallucinations | Ground responses in DB data, include sources |
+| External clients misuse tools | Clear documentation, validate inputs in tools |
 
 ## Migration Plan
 
@@ -247,8 +275,8 @@ async def create_agent():
 
 ### Phase 2: MCP Server Setup
 1. Create MCP server structure (`src/app/mcp/`)
-2. Implement `meta_analytics_tool.py` - move all MetaService logic here
-3. Implement `deck_analysis_tool.py` - new deck analysis logic
+2. Implement `meta_research_tools.py` - move all MetaService logic here
+3. Implement `deck_coaching_tools.py` - new deck analysis logic
 4. Start MCP server on port 8000
 
 ### Phase 3: Rewrite FastAPI Routes (Breaking)
@@ -257,11 +285,10 @@ async def create_agent():
 3. Update existing tests for async routes
 4. Delete `tests/unit/test_meta_service.py`
 
-### Phase 4: Add Agent Capabilities
-1. Implement LangGraph agent service
-2. Add `agent_routes.py` with capabilities and analyze endpoints
-3. Register new routes in `main.py`
-4. Add integration tests
+### Phase 4: Documentation & Client Examples
+1. Document MCP tools in README
+2. Provide example MCP client configurations
+3. Add integration tests for MCP workflows
 
 ### Rollback Strategy
 If MCP approach fails, MetaService logic is preserved in git history and can be restored. Utility refactoring is independent and low-risk.
@@ -269,9 +296,25 @@ If MCP approach fails, MetaService logic is preserved in git history and can be 
 ## Open Questions
 
 1. Should the MCP server run in-process with FastAPI or as a separate process?
-   - **Proposed**: In-process for v1 simplicity, can extract later
-2. How should we handle rate limiting for the coaching LLM calls?
-   - **Proposed**: Rely on LLM client's built-in retry logic initially
-3. Should archetype list for dropdown include all archetypes or filter by meta presence?
-   - **Proposed**: Filter to archetypes with >1% meta share in time window for cleaner UX
+   - **Resolved**: In-process for v1 simplicity, HTTP-based client prepares for future separation
+2. How should we handle rate limiting for MCP tool calls?
+   - **Proposed**: No rate limiting in tools, clients are responsible for managing their own usage
+3. Should we expose raw database queries or only computed metrics?
+   - **Proposed**: Only computed metrics (rankings, win rates)
+
+## Post-Implementation Updates
+
+### Refactoring: Clients Directory and MCP Client Simplification
+After initial implementation, the following refactoring was completed:
+
+1. **API Clients Moved to Shared Location**: `src/etl/api_clients/` → `src/clients/`
+   - All external API clients (LLM, Scryfall, TopDeck) are now shared infrastructure
+   - Updated imports in ETL pipelines and MCP tools to use `src.clients.*`
+   - Clean dependency graph: both app and etl depend on clients, not each other
+
+2. **MCP Client Simplified**: Removed FastMCP direct call fallback
+   - Removed ~60 lines of fallback logic from `mcp_client.py`
+   - HTTP-only approach via `MultiServerMCPClient` with session-based discovery fallback
+   - Prepares for future separation of MCP server into its own repository
+   - Simpler codebase, easier to debug, no in-process coupling
 

@@ -36,7 +36,7 @@ The system SHALL provide an MCP server using FastMCP that contains all business 
 
 #### Scenario: List available tools
 - **WHEN** a client requests the list of available MCP tools
-- **THEN** the server returns tool definitions including `meta_analytics_tool` and `deck_analysis_tool`
+- **THEN** the server returns tool definitions including `meta_research_tools` and `deck_coaching_tools`
 - **AND** each tool includes name, description, and parameter schema
 
 #### Scenario: MCP server runs as separate service
@@ -45,11 +45,11 @@ The system SHALL provide an MCP server using FastMCP that contains all business 
 - **AND** FastAPI application connects via `MultiServerMCPClient`
 - **AND** both can run in same codebase but are independently deployable
 
-### Requirement: Meta Analytics MCP Tool
-The system SHALL provide a `meta_analytics_tool` MCP tool containing business logic for archetype rankings and matchup matrices (moved from MetaService).
+### Requirement: Meta Research Tools
+The system SHALL provide a `meta_research_tools` MCP tool module containing business logic for format-wide archetype rankings and matchup statistics (moved from MetaService).
 
 #### Scenario: Calculate archetype rankings via MCP
-- **WHEN** `get_archetype_rankings` is called with format, current_days, previous_days parameters
+- **WHEN** `get_format_meta_rankings` is called with format, current_days, previous_days parameters
 - **THEN** the tool queries the database for tournament/archetype/match data
 - **AND** calculates meta share using polars DataFrames
 - **AND** calculates win rates with minimum match threshold
@@ -57,14 +57,14 @@ The system SHALL provide a `meta_analytics_tool` MCP tool containing business lo
 - **AND** supports optional filters (color_identity, strategy, group_by)
 
 #### Scenario: Calculate matchup matrix via MCP
-- **WHEN** `get_matchup_matrix` is called with format and days parameters
+- **WHEN** `get_format_matchup_stats` is called with format and days parameters
 - **THEN** the tool queries match data from database
-- **AND** calculates head-to-head win rates using polars pivot operations
+- **AND** calculates head-to-head win rates using polars operations
 - **AND** returns nested dictionary: {player_archetype: {opponent_archetype: {win_rate, match_count}}}
 - **AND** returns null for matchups with < 3 matches
 
-### Requirement: Deck Analysis Tool Operations
-The system SHALL provide a `deck_analysis_tool` MCP tool with operations for card details, synergies, matchups, and piloting advice.
+### Requirement: Deck Coaching Tool Operations
+The system SHALL provide a `deck_coaching_tools` MCP tool module with operations for card parsing, deck-specific matchups, and personalized piloting advice.
 
 #### Scenario: Get card details for decklist
 - **WHEN** `get_card_details` is called with a decklist string
@@ -97,129 +97,55 @@ The system SHALL provide a coaching prompt template at `src/app/mcp/prompts/coac
 - **WHEN** the agent needs to generate coaching advice
 - **THEN** it loads the coaching prompt template
 - **AND** the prompt instructs the LLM to analyze deck vs meta context
-- **AND** the prompt includes placeholders for: deck_cards, synergies, matchup_data, opponent_archetype
+- **AND** the prompt includes placeholders for: card_details, synergies, matchup_stats, opponent_archetype
 
-### Requirement: LangChain MCP Adapters Integration
-The system SHALL use `langchain-mcp-adapters` to convert MCP tools into LangChain/LangGraph-compatible tools.
-
-#### Scenario: Load MCP tools via MultiServerMCPClient
-- **WHEN** the agent service initializes
-- **THEN** it creates a `MultiServerMCPClient` with the deck analysis MCP server configuration
-- **AND** calls `client.get_tools()` to load MCP tools as LangChain-compatible tools
-- **AND** the tools are usable with LangGraph's `ToolNode`
+### Requirement: LangChain MCP Adapters for FastAPI Integration
+The system SHALL use `langchain-mcp-adapters` `MultiServerMCPClient` to call MCP tools from FastAPI routes.
 
 #### Scenario: Connect to MCP server via streamable HTTP
 - **WHEN** the `MultiServerMCPClient` is configured
-- **THEN** it uses `transport: "streamable_http"` for the deck_analysis server
+- **THEN** it uses `transport: "streamable_http"` for the meta_analytics server
 - **AND** connects to the MCP server URL (e.g., `http://localhost:8000/mcp`)
+- **AND** the client is initialized at module level in `src/app/api/services/mcp_client.py`
+- **AND** the MCP server URL is configurable via `MCP_SERVER_URL` environment variable (default: `http://localhost:8000/mcp`)
 
-### Requirement: LangGraph Agent Service
-The system SHALL provide a LangGraph-based agent service at `src/app/api/services/agent.py` using `StateGraph`, `ToolNode`, and `tools_condition`.
-
-#### Scenario: Build StateGraph with tool routing
-- **WHEN** the agent graph is constructed
-- **THEN** it uses `StateGraph` with `MessagesState` for conversation state
-- **AND** adds a `call_model` node that binds MCP tools to the LLM
-- **AND** adds a `ToolNode` with the loaded MCP tools
-- **AND** uses `tools_condition` to route between model and tool execution
-- **AND** edges loop from tools back to call_model for multi-turn tool use
-
-#### Scenario: Execute analysis workflow
-- **WHEN** the agent receives an analysis request with decklist, format, days, and archetype
-- **THEN** it invokes the compiled graph with the user message
-- **AND** the graph orchestrates tool calls automatically based on LLM decisions
-- **AND** returns a structured analysis response
-
-#### Scenario: Handle tool errors gracefully
-- **WHEN** an MCP tool call fails
-- **THEN** the agent logs the error with context
-- **AND** continues with available data
-- **AND** indicates incomplete analysis in response
+#### Scenario: Call MCP tool from route
+- **WHEN** a FastAPI route needs to call an MCP tool
+- **THEN** it uses `await call_mcp_tool(tool_name, arguments={...})` from `mcp_client` module
+- **AND** the `call_mcp_tool` function wraps `client.call_tool(server_name, tool_name, arguments={...})`
+- **AND** the call returns the tool result as JSON
+- **AND** the route handles errors appropriately
+- **AND** the route is async (uses `async def`)
 
 ### Requirement: REST Routes Call MCP Directly
 The system SHALL update existing meta analytics routes to call MCP tools directly via `MultiServerMCPClient` (no service layer).
 
 #### Scenario: Archetype rankings route calls MCP
 - **WHEN** GET `/api/v1/meta/archetypes` is requested
-- **THEN** the route creates/reuses a `MultiServerMCPClient` instance
-- **AND** calls `client.call_tool("meta_analytics", "get_archetype_rankings", arguments={...})`
+- **THEN** the route calls `await call_mcp_tool("get_format_meta_rankings", arguments={...})`
+- **AND** the `call_mcp_tool` function uses the shared `MultiServerMCPClient` instance
 - **AND** the route is async (uses `async def`)
 - **AND** returns the MCP tool result directly as HTTP response
 
 #### Scenario: Matchup matrix route calls MCP
 - **WHEN** GET `/api/v1/meta/matchups` is requested
-- **THEN** the route calls `client.call_tool("meta_analytics", "get_matchup_matrix", arguments={...})`
+- **THEN** the route calls `await call_mcp_tool("get_format_matchup_stats", arguments={...})`
 - **AND** returns the MCP tool result directly as HTTP response
 
 #### Scenario: MCP client initialization
-- **WHEN** the meta_routes module is imported
-- **THEN** a module-level `MultiServerMCPClient` is created with meta_analytics server config
-- **AND** the client is reused across all route invocations
+- **WHEN** the `mcp_client` module is imported
+- **THEN** the `get_mcp_client()` function creates a `MultiServerMCPClient` instance lazily on first access
+- **AND** the client is cached in a module-level variable and reused across all route invocations
 - **AND** the client uses `streamable_http` transport to MCP server URL
+- **AND** the client connects to server name "meta_analytics"
 
-### Requirement: Agent API Endpoints
-The system SHALL provide REST API endpoints for agent interactions at `/api/v1/agent/`.
-
-#### Scenario: Get agent capabilities
-- **WHEN** GET `/api/v1/agent/capabilities` is requested
-- **THEN** return JSON with available features in plain language
-- **AND** include: deck_analysis, synergy_identification, meta_matchups, piloting_advice
-- **AND** each feature includes description and required inputs
-
-#### Scenario: Submit deck for analysis
-- **WHEN** POST `/api/v1/agent/analyze` is requested with body:
-  - `decklist` (string, required): Raw decklist text
-  - `format` (string, required): Tournament format
-  - `days` (integer, default 14): Time range for meta context
-  - `archetype` (string, required): Selected archetype classification
-- **THEN** validate all required fields are present
-- **AND** execute the analysis workflow via agent service
-- **AND** return structured analysis response
-
-#### Scenario: Get archetypes for format dropdown
-- **WHEN** GET `/api/v1/agent/archetypes?format={format}&days={days}` is requested
-- **THEN** return list of archetypes for the format in the time window
-- **AND** filter to archetypes with meta share > 1%
-- **AND** include "other" option at end of list
-- **AND** each archetype includes: main_title, color_identity, strategy, meta_share
-
-#### Scenario: Validate analysis request
-- **WHEN** POST `/api/v1/agent/analyze` is missing required fields
-- **THEN** return 400 Bad Request
-- **AND** response includes list of missing/invalid fields
-
-#### Scenario: Handle invalid archetype
-- **WHEN** POST `/api/v1/agent/analyze` has archetype not in format's list
-- **THEN** accept the request (allows "other" or custom archetypes)
-- **AND** matchup data returns empty/null for unknown archetypes
-- **AND** analysis continues with deck-only insights
-
-### Requirement: Analysis Response Structure
-The system SHALL return deck analysis in a structured format with sections for different insights.
-
-#### Scenario: Successful analysis response
-- **WHEN** deck analysis completes successfully
-- **THEN** return 200 OK with JSON body containing:
-  - `deck_overview`: card count, color identity, mana curve summary
-  - `synergies`: list of identified card synergies with descriptions
-  - `weaknesses`: list of identified weaknesses with explanations
-  - `meta_positioning`: win rates against top meta decks
-  - `piloting_guides`: matchup-specific advice for top 5 meta decks
-  - `metadata`: format, time_range, archetype, timestamp
-
-#### Scenario: Partial analysis response
-- **WHEN** some analysis steps fail (e.g., matchup data unavailable)
-- **THEN** return 200 OK with available sections populated
-- **AND** failed sections include null value and error message
-- **AND** metadata includes `warnings` array listing issues
 
 ### Requirement: Dependencies Addition
-The system SHALL add required dependencies to `pyproject.toml` for LangGraph and MCP support.
+The system SHALL add required dependencies to `pyproject.toml` for MCP support.
 
 #### Scenario: Install new dependencies
 - **WHEN** `uv sync` is run after the change
-- **THEN** `langgraph` package is installed (agent workflow orchestration)
-- **AND** `fastmcp` package is installed (MCP server with decorator-based tools)
-- **AND** `langchain-mcp-adapters` package is installed (converts MCP tools to LangChain tools)
+- **THEN** `fastmcp` package is installed (MCP server with decorator-based tools)
+- **AND** `langchain-mcp-adapters` package is installed (MCP client for Python)
 - **AND** existing functionality remains unaffected
 
