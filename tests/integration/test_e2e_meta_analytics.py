@@ -2,14 +2,42 @@
 
 import logging
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch, AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from src.app.api.main import app
 from src.database.connection import DatabaseConnection
+from src.app.mcp.tools.meta_research_tools import (
+    get_format_meta_rankings,
+    get_format_matchup_stats
+)
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def mock_mcp_client():
+    """
+    Mock MCP client to call tool functions directly instead of over HTTP.
+    
+    This allows integration tests to test the full stack (database → tools → API)
+    without requiring an HTTP MCP server to be running.
+    """
+    async def call_mcp_tool_direct(tool_name: str, arguments: dict) -> dict:
+        """Call MCP tool functions directly, bypassing HTTP."""
+        # FastMCP tools are FunctionTool objects - access underlying function via .fn
+        if tool_name == "get_format_meta_rankings":
+            return get_format_meta_rankings.fn(**arguments)
+        elif tool_name == "get_format_matchup_stats":
+            return get_format_matchup_stats.fn(**arguments)
+        else:
+            raise KeyError(f"Unknown tool: {tool_name}")
+    
+    with patch("src.app.api.routes.meta_routes.call_mcp_tool", new_callable=AsyncMock) as mock:
+        mock.side_effect = call_mcp_tool_direct
+        yield mock
 
 
 @pytest.fixture

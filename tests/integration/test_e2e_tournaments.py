@@ -5,7 +5,7 @@ import pytest
 import logging
 from typing import Dict, List, Optional
 
-from src.etl.api_clients.topdeck_client import TopDeckClient
+from src.clients.topdeck_client import TopDeckClient
 from src.etl.tournaments_pipeline import TournamentsPipeline
 from src.database.connection import DatabaseConnection
 

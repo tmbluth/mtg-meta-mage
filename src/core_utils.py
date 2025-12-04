@@ -1,14 +1,11 @@
-"""Utility functions for ETL pipelines"""
+"""Shared utility functions used across ETL and application layers"""
 
 import re
-import time
 import logging
 import unicodedata
-from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-from Levenshtein import distance as levenshtein_distance    
-from src.database.connection import DatabaseConnection
+from Levenshtein import distance as levenshtein_distance
 
 logger = logging.getLogger(__name__)
 
@@ -218,88 +215,33 @@ def parse_decklist(decklist_text: str) -> List[Dict[str, any]]:
     return cards
 
 
-def get_last_load_timestamp(data_type: str) -> Optional[datetime]:
-    """
-    Get the timestamp of the last successful load for a specific data type
-    
-    Args:
-        data_type: Type of data ('tournaments', 'cards', 'archetypes')
-    
-    Returns:
-        datetime of last load, or None if no previous load
-    """
-    try:
-        with DatabaseConnection.get_cursor() as cur:
-            cur.execute(
-                """
-                SELECT last_load_date FROM load_metadata 
-                WHERE data_type = %s 
-                ORDER BY id DESC LIMIT 1
-                """,
-                (data_type,)
-            )
-            result = cur.fetchone()
-            if result:
-                return result[0]
-            return None
-    except Exception as e:
-        logger.error(f"Error getting last load timestamp for {data_type}: {e}")
-        return None
-
-
-def update_load_metadata(
-    last_timestamp: datetime,
-    objects_loaded: int,
-    data_type: str,
-    load_type: str = 'incremental'
-) -> None:
-    """
-    Update load metadata after successful load
-    
-    Args:
-        last_timestamp: datetime of the latest item loaded
-        objects_loaded: Number of items loaded in this batch
-        data_type: Type of data ('tournaments', 'cards', 'archetypes')
-        load_type: Type of load ('incremental', 'initial')
-    """
-    try:
-        with DatabaseConnection.get_cursor(commit=True) as cur:
-            cur.execute(
-                """
-                INSERT INTO load_metadata (last_load_date, objects_loaded, data_type, load_type)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (last_timestamp, objects_loaded, data_type, load_type)
-            )
-    except Exception as e:
-        logger.error(f"Error updating load metadata for {load_type}, {data_type}: {e}")
-        raise
-
-def find_fuzzy_card_match(card_name: str, cur, threshold: int = 2) -> Optional[Tuple[str, str]]:
+def find_fuzzy_card_match(
+    card_name: str, 
+    available_cards: List[Tuple[str, str]], 
+    threshold: int = 2
+) -> Optional[Tuple[str, str]]:
     """
     Find a fuzzy match for a card name using Levenshtein distance.
     
     Args:
         card_name: The card name to match
-        cur: Database cursor
+        available_cards: List of (card_id, card_name) tuples to match against
         threshold: Maximum edit distance to accept (default 2)
         
     Returns:
         Tuple of (card_id, matched_name) if found, None otherwise
     """    
-    # Get all card names from database (could be optimized with caching)
-    cur.execute("SELECT card_id, name FROM cards LIMIT 100000")  # Limit for safety
-    all_cards = cur.fetchall()
     
     # Find closest match
     best_match = None
     best_distance = float('inf')
     card_name_lower = card_name.lower()
     
-    for card_id, db_name in all_cards:
+    for card_id, db_name in available_cards:
         dist = levenshtein_distance(card_name_lower, db_name.lower())
         if dist < best_distance and dist <= threshold:
             best_distance = dist
             best_match = (card_id, db_name)
     
     return best_match
+

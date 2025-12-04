@@ -1,5 +1,7 @@
 """
 Meta Analytics API Routes - REST API endpoints for meta analytics.
+
+Routes call MCP tools via MultiServerMCPClient over HTTP (streamable_http transport).
 """
 
 import logging
@@ -14,7 +16,7 @@ from src.app.api.models import (
     MatchupMatrixResponse,
     MatchupQueryParams,
 )
-from src.app.api.services.meta_analysis import MetaService
+from src.app.api.services.mcp_client import call_mcp_tool
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +73,17 @@ async def get_archetype_rankings(
             group_by=group_by,
         )
 
-        # Get rankings from service
-        service = MetaService()
-        result = service.get_archetype_rankings(
-            format=params.format,
-            current_days=params.current_days,
-            previous_days=params.previous_days,
-            color_identity=params.color_identity,
-            strategy=params.strategy,
-            group_by=params.group_by,
+        # Call MCP tool via HTTP client
+        result = await call_mcp_tool(
+            "get_format_meta_rankings",
+            arguments={
+                "format": params.format,
+                "current_days": params.current_days,
+                "previous_days": params.previous_days,
+                "color_identity": params.color_identity,
+                "strategy": params.strategy,
+                "group_by": params.group_by,
+            }
         )
 
         # Check if we have any data
@@ -144,11 +148,13 @@ async def get_matchup_matrix(
         # Validate query parameters
         params = MatchupQueryParams(format=format, days=days)
 
-        # Get matchup matrix from service
-        service = MetaService()
-        result = service.get_matchup_matrix(
-            format=params.format,
-            days=params.days,
+        # Call MCP tool via HTTP client
+        result = await call_mcp_tool(
+            "get_format_matchup_stats",
+            arguments={
+                "format": params.format,
+                "days": params.days,
+            }
         )
 
         # Check if we have any data

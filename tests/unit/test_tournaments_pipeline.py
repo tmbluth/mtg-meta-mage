@@ -361,7 +361,7 @@ def test_insert_deck_cards_handles_missing_cards(mock_db_connection, pipeline):
     
     with patch('src.etl.tournaments_pipeline.parse_decklist') as mock_parse, \
          patch('src.etl.tournaments_pipeline.execute_batch') as mock_batch, \
-         patch('src.etl.utils.find_fuzzy_card_match') as mock_fuzzy:
+         patch('src.core_utils.find_fuzzy_card_match') as mock_fuzzy:
         
         mock_parse.return_value = [
             {'card_name': 'Lightning Bolt', 'quantity': 4, 'section': 'mainboard'},

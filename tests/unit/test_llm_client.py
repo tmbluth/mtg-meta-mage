@@ -2,13 +2,13 @@
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from src.etl.api_clients.llm_client import get_llm_client, LLMClient
+from src.clients.llm_client import get_llm_client, LLMClient
 
 
 class TestGetLLMClient:
     """Tests for get_llm_client function"""
     
-    @patch('src.etl.api_clients.llm_client.ChatOpenAI')
+    @patch('src.clients.llm_client.ChatOpenAI')
     @patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'})
     def test_openai_provider_explicit(self, mock_chat_openai):
         """Test explicit OpenAI provider"""
@@ -30,7 +30,7 @@ class TestGetLLMClient:
         with pytest.raises(ValueError, match="OPENAI_API_KEY environment variable not set"):
             get_llm_client('gpt-4o-mini', model_provider='openai')
     
-    @patch('src.etl.api_clients.llm_client.ChatAnthropic')
+    @patch('src.clients.llm_client.ChatAnthropic')
     @patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'})
     def test_anthropic_provider_explicit(self, mock_chat_anthropic):
         """Test explicit Anthropic provider"""
@@ -52,7 +52,7 @@ class TestGetLLMClient:
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY environment variable not set"):
             get_llm_client('claude-3-5-sonnet', model_provider='anthropic')
     
-    @patch('src.etl.api_clients.llm_client.ChatBedrock')
+    @patch('src.clients.llm_client.ChatBedrock')
     @patch.dict('os.environ', {'AWS_REGION': 'eu-west-1'})
     def test_bedrock_provider_explicit(self, mock_chat_bedrock):
         """Test explicit Bedrock provider"""
@@ -68,7 +68,7 @@ class TestGetLLMClient:
         )
         assert isinstance(result, LLMClient)
     
-    @patch('src.etl.api_clients.llm_client.AzureChatOpenAI')
+    @patch('src.clients.llm_client.AzureChatOpenAI')
     @patch.dict('os.environ', {
         'AZURE_OPENAI_API_KEY': 'test-key',
         'AZURE_OPENAI_LLM_ENDPOINT': 'https://{}.openai.azure.com/{}/v1',
@@ -122,7 +122,7 @@ class TestGetLLMClient:
         with pytest.raises(ValueError, match="Unknown provider"):
             get_llm_client('model-name', model_provider='unknown_provider')
     
-    @patch('src.etl.api_clients.llm_client.ChatOpenAI')
+    @patch('src.clients.llm_client.ChatOpenAI')
     @patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'})
     def test_client_creation_with_correct_config(self, mock_chat_openai):
         """Test that LLMClient is created with correct system instruction"""
@@ -136,7 +136,7 @@ class TestGetLLMClient:
         assert 'archetype' in result.system_instruction.lower()
         assert result.model == mock_model
     
-    @patch('src.etl.api_clients.llm_client.ChatOpenAI')
+    @patch('src.clients.llm_client.ChatOpenAI')
     @patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'})
     def test_provider_case_insensitive(self, mock_chat_openai):
         """Test that provider parameter is case-insensitive"""

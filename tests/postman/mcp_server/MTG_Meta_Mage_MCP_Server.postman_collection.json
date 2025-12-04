@@ -1,0 +1,196 @@
+{
+  "info": {
+    "name": "MTG Meta Mage - API & MCP Server",
+    "description": "Test collection for MTG Meta Mage API endpoints and MCP server. FastAPI endpoints call MCP tools internally via MultiServerMCPClient over HTTP. The MCP server can also be accessed directly by external MCP clients (Claude Desktop, custom agents, etc.) using the streamable_http transport.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "fastapi_base_url",
+      "value": "http://localhost:8080",
+      "type": "string",
+      "description": "Base URL for FastAPI server (calls MCP tools internally)"
+    },
+    {
+      "key": "mcp_base_url",
+      "value": "http://localhost:8000",
+      "type": "string",
+      "description": "Base URL for MCP server (for external MCP clients using streamable_http transport)"
+    },
+    {
+      "key": "format",
+      "value": "Legacy",
+      "type": "string",
+      "description": "Tournament format to query"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Checks",
+      "item": [
+        {
+          "name": "FastAPI Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{fastapi_base_url}}/health",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Check if the FastAPI server is running and accessible."
+          },
+          "response": []
+        }
+      ],
+      "description": "Health check endpoints for verifying server status."
+    },
+    {
+      "name": "FastAPI Endpoints (Recommended)",
+      "item": [
+        {
+          "name": "Get Archetype Rankings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{fastapi_base_url}}/api/v1/meta/archetypes?format={{format}}&current_days=365&previous_days=365",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["api", "v1", "meta", "archetypes"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "{{format}}"
+                },
+                {
+                  "key": "current_days",
+                  "value": "365"
+                },
+                {
+                  "key": "previous_days",
+                  "value": "365"
+                }
+              ]
+            },
+            "description": "Get format-wide archetype rankings via FastAPI endpoint. This endpoint calls the MCP get_format_meta_rankings tool internally using MultiServerMCPClient over HTTP."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Archetype Rankings - Filtered by Color",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{fastapi_base_url}}/api/v1/meta/archetypes?format={{format}}&current_days=365&previous_days=365&color_identity=dimir",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["api", "v1", "meta", "archetypes"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "{{format}}"
+                },
+                {
+                  "key": "current_days",
+                  "value": "365"
+                },
+                {
+                  "key": "previous_days",
+                  "value": "365"
+                },
+                {
+                  "key": "color_identity",
+                  "value": "dimir"
+                }
+              ]
+            },
+            "description": "Get archetype rankings filtered by color identity (e.g., dimir for Dimir decks)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Archetype Rankings - Grouped by Strategy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{fastapi_base_url}}/api/v1/meta/archetypes?format={{format}}&current_days=365&previous_days=365&group_by=strategy",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["api", "v1", "meta", "archetypes"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "{{format}}"
+                },
+                {
+                  "key": "current_days",
+                  "value": "365"
+                },
+                {
+                  "key": "previous_days",
+                  "value": "365"
+                },
+                {
+                  "key": "group_by",
+                  "value": "strategy"
+                }
+              ]
+            },
+            "description": "Get archetype rankings grouped by strategy (aggro, midrange, control, combo, ramp)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Matchup Matrix",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{fastapi_base_url}}/api/v1/meta/matchups?format={{format}}&days=365",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["api", "v1", "meta", "matchups"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "{{format}}"
+                },
+                {
+                  "key": "days",
+                  "value": "365"
+                }
+              ]
+            },
+            "description": "Get complete matchup matrix showing head-to-head win rates between archetypes. This endpoint calls the MCP get_format_matchup_stats tool internally using MultiServerMCPClient over HTTP."
+          },
+          "response": []
+        }
+      ],
+      "description": "FastAPI REST endpoints that call MCP tools internally via MultiServerMCPClient. These are the recommended endpoints for testing as they work out of the box."
+    },
+    {
+      "name": "MCP Server (External Clients)",
+      "item": [
+        {
+          "name": "MCP Server Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{mcp_base_url}}/mcp",
+              "host": ["{{mcp_base_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "MCP server endpoint for external MCP clients. Uses JSON-RPC protocol with streamable_http transport. Requires Accept: text/event-stream header for streamable_http transport."
+          },
+          "response": []
+        }
+      ],
+      "description": "MCP server endpoints for external MCP clients. These use the JSON-RPC protocol and require an MCP client library (like langchain-mcp-adapters) to interact with. FastAPI routes use MultiServerMCPClient internally to call these tools."
+    }
+  ]
+}

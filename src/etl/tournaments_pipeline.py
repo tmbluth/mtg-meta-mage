@@ -6,9 +6,9 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from psycopg2.extras import execute_batch
 
-from src.etl.api_clients.topdeck_client import TopDeckClient
+from src.clients.topdeck_client import TopDeckClient
 from src.database.connection import DatabaseConnection
-from src.etl.utils import parse_decklist, get_last_load_timestamp, update_load_metadata, find_fuzzy_card_match
+from src.etl.etl_utils import parse_decklist, get_last_load_timestamp, update_load_metadata, find_fuzzy_card_match
 from src.etl.base_pipeline import BasePipeline
 
 logger = logging.getLogger(__name__)
@@ -391,6 +391,10 @@ class TournamentsPipeline(BasePipeline):
                 logger.debug(f"No cards found in decklist for player {player_id}, tournament {tournament_id}")
                 return
             
+            # Fetch all available cards once for fuzzy matching (if needed)
+            cur.execute("SELECT card_id, name FROM cards LIMIT 100000")
+            all_available_cards = cur.fetchall()
+            
             # Match cards to cards table and prepare batch data
             deck_cards_data = []
             missing_cards = []
@@ -457,7 +461,7 @@ class TournamentsPipeline(BasePipeline):
                 
                 # Tier 5: Fuzzy matching with Levenshtein distance
                 if not card_result:
-                    fuzzy_match = find_fuzzy_card_match(card_name, cur, threshold=2)
+                    fuzzy_match = find_fuzzy_card_match(card_name, all_available_cards, threshold=2)
                     if fuzzy_match:
                         card_id, matched_name = fuzzy_match
                         logger.info(f"Matched '{card_name}' via fuzzy search as '{matched_name}'")

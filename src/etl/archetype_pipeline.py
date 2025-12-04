@@ -15,9 +15,9 @@ from pydantic import BaseModel, Field, field_validator
 load_dotenv()
 
 from src.database.connection import DatabaseConnection
-from src.etl.utils import get_last_load_timestamp, update_load_metadata
+from src.etl.etl_utils import get_last_load_timestamp, update_load_metadata
 from src.etl.base_pipeline import BasePipeline
-from src.etl.api_clients.llm_client import get_llm_client
+from src.clients.llm_client import get_llm_client
 
 logger = logging.getLogger(__name__)
 
