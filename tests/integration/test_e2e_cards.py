@@ -4,7 +4,7 @@ import pytest
 import logging
 from typing import Dict, List
 
-from src.etl.api_clients.scryfall_client import ScryfallClient
+from src.clients.scryfall_client import ScryfallClient
 from src.etl.cards_pipeline import CardsPipeline
 from src.database.connection import DatabaseConnection
 

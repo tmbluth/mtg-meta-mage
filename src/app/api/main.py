@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI application
 app = FastAPI(
-    title="MTG Meta Analytics API",
+    title="MTG Meta Mage API",
     description="REST API for MTG Meta Mage",
     version="1.0.0",
     docs_url="/docs",

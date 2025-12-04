@@ -10,6 +10,12 @@ An AI-powered tool for analyzing Magic: The Gathering decklists against the comp
 - PostgreSQL database for storing tournament, player, decklist, match, cards, and archetype data
 - Initial bulk load and incremental update capabilities for all data types
 
+## Roadmap
+
+- **Streamlit UI**: Meta analytics dashboard and chat interface
+- **Deck Analysis**: Submit decks for piloting guides against top meta decks  
+- **Deck Updates**: AI-powered sideboard and flex slot recommendations
+
 ## Prerequisites
 
 - Python 3.11+
@@ -383,11 +389,12 @@ uv run pytest tests/test_your_file.py
 ```
 mtg-meta-mage/
 ├── src/
+│   ├── clients/           # External API clients (LLM, Scryfall, TopDeck)
 │   ├── app/
-│   │   └── api/
+│   │   ├── api/
+│   │   └── mcp/
 │   ├── database/
 │   ├── etl/
-│   │   └── api_clients/
 ├── tests/
 │   ├── unit/
 │   └── integration/

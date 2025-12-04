@@ -6,7 +6,7 @@ import logging
 import json
 from unittest.mock import patch, MagicMock
 
-from src.etl.api_clients.llm_client import get_llm_client
+from src.clients.llm_client import get_llm_client
 from src.etl.archetype_pipeline import (
     ArchetypeClassificationPipeline,
     ArchetypeClassificationResponse,

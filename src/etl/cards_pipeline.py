@@ -6,9 +6,9 @@ from datetime import datetime
 from typing import Dict, Optional, Any
 from psycopg2.extras import execute_batch
 
-from src.etl.api_clients.scryfall_client import ScryfallClient
+from src.clients.scryfall_client import ScryfallClient
 from src.database.connection import DatabaseConnection
-from src.etl.utils import get_last_load_timestamp, update_load_metadata
+from src.etl.etl_utils import get_last_load_timestamp, update_load_metadata
 from src.etl.base_pipeline import BasePipeline
 
 logger = logging.getLogger(__name__)

@@ -102,3 +102,46 @@ class MatchupQueryParams(BaseModel):
     format: str = Field(..., description="Tournament format (e.g., Modern, Pioneer, Standard)")
     days: int = Field(14, ge=1, le=365, description="Number of days to include in analysis")
 
+class DeckAnalysisRequest(BaseModel):
+    """Request model for deck analysis endpoint."""
+    
+    decklist: str = Field(..., description="Raw decklist text (quantity + card name format)")
+    format: str = Field(..., description="Tournament format (e.g., Modern, Pioneer)")
+    archetype: str = Field(..., description="Deck archetype classification")
+    days: int = Field(14, ge=1, le=90, description="Time range for meta analysis (default: 14 days)")
+    top_n_matchups: int = Field(5, ge=1, le=10, description="Number of top matchups to analyze (default: 5)")
+
+
+class DeckAnalysisResponse(BaseModel):
+    """Response model for deck analysis endpoint."""
+    
+    deck_overview: dict = Field(..., description="High-level deck information")
+    card_details: list = Field(..., description="Full card details for all cards")
+    card_errors: list = Field(default=[], description="Cards that couldn't be found")
+    meta_positioning: dict = Field(..., description="Matchup stats against meta decks")
+    piloting_guides: list = Field(..., description="Matchup-specific coaching advice")
+    metadata: dict = Field(..., description="Analysis parameters")
+
+
+class CapabilitiesResponse(BaseModel):
+    """Response model for capabilities endpoint."""
+    
+    capabilities: list[dict] = Field(..., description="List of available agent capabilities")
+    version: str = Field(..., description="Agent version")
+
+
+class ArchetypeOption(BaseModel):
+    """Archetype option for dropdown."""
+    
+    main_title: str = Field(..., description="Archetype name")
+    color_identity: Optional[str] = Field(None, description="Color identity")
+    strategy: str = Field(..., description="Strategy type")
+    meta_share: float = Field(..., description="Current meta share percentage")
+
+
+class ArchetypeOptionsResponse(BaseModel):
+    """Response model for archetype options endpoint."""
+    
+    format: str = Field(..., description="Tournament format")
+    archetypes: list[ArchetypeOption] = Field(..., description="List of archetype options")
+    metadata: dict = Field(..., description="Query metadata")

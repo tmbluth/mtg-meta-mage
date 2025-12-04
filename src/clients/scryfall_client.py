@@ -146,8 +146,9 @@ class ScryfallClient:
             filename = os.path.basename(parsed_url.path)
             
             # Save data locally under data/{data_type}/ folder
-            data_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', data_type)
-            data_folder = os.path.abspath(data_folder)
+            # Use project root relative to this file (src/clients/ -> src/../data/)
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            data_folder = os.path.join(project_root, 'data', data_type)
             os.makedirs(data_folder, exist_ok=True)
             
             # Save with the original timestamped filename

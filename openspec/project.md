@@ -11,14 +11,17 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
 - Meta analytics REST API with archetype rankings and matchup matrix
 
 **Future Features:**
-- Get matchup specific coaching 
-  - Select deck of interest and meta time window
+- Get decklist analysis 
+  - Submit deck and select meta time window
   - Strongest/weakest cards against top tier decks
-  - Sideboard guide against top tier decks
-- Decklist optimization:
+  - Deck piloting guide for selected meta
+- Update decklist
   - Submit deck and select meta time window
   - Update maindeck flex spots for selected meta
   - Update sideboard for the selected meta
+- User Interface
+  - Meta analytics displayed 
+  - Chat 
 
 ## Tech Stack
 - **Language**: Python 3.11+
@@ -56,6 +59,7 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
 - **Filter Functions**: Pure functions for data validation and filtering (e.g., `filter_tournaments`, `is_valid_match`)
 - **Dependency Injection**: Services accept optional parameters (e.g., API keys, model names) with fallback to environment variables
 - **Normalized Schema Design**: Two-table design for archetype classification (`archetype_groups` + `archetype_classifications`)
+- MCP server to be decoupled from backend agent API
 
 ### Testing Strategy
 - **Unit Tests**: Located in `tests/unit/`, use mocking to avoid external dependencies
@@ -65,6 +69,7 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
   - Mark with `@pytest.mark.integration` marker
   - Require proper environment configuration (API keys, test database)
   - Use fixtures for shared test setup (`conftest.py`)
+- **Postman Tests**: located in `tests/postman` to test API endpoints
 - **Test Organization**: Mirror source structure (`tests/unit/` and `tests/integration/` parallel `src/`)
 - **Fixtures**: Use pytest fixtures for database config, API clients, and shared test data
 - **Error Handling**: Tests should verify both success and error paths
