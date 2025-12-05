@@ -18,7 +18,8 @@ The system SHALL store format legality information for each card in the cards ta
 
 #### Scenario: Query cards by format legality
 - **WHEN** optimization tools need to find legal cards
-- **THEN** they query: `WHERE legalities->>'format_name' = 'legal'`
+- **THEN** they normalize the format parameter to match database format (lowercase)
+- **AND** query: `WHERE legalities->>'normalized_format' = 'legal'`
 - **AND** the query returns only cards legal in that format
 - **AND** cards with banned status are excluded
 - **AND** cards with restricted status are included with appropriate warnings

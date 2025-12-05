@@ -29,9 +29,11 @@
   - [ ] 1.1.3 Both templates include format parameter and legality instructions
 - [ ] 1.2 Create shared helper function `_get_legal_cards_for_format` in `deck_coaching_tools.py`
   - [ ] 1.2.1 Accept parameters: format (str)
-  - [ ] 1.2.2 Query cards table: `WHERE legalities->>'format' = 'legal'`
-  - [ ] 1.2.3 Return DataFrame with card_id, name, type_line, mana_cost, cmc, color_identity
-  - [ ] 1.2.4 Handle missing legality data with appropriate errors
+  - [ ] 1.2.2 Normalize format parameter to lowercase before querying
+  - [ ] 1.2.3 Query cards table: `WHERE legalities->>'normalized_format' = 'legal'`
+  - [ ] 1.2.4 Join with deck_cards table to filter to commonly-played cards (appearing in decklists from last 180 days)
+  - [ ] 1.2.5 Return DataFrame with card_id, name, type_line, mana_cost, cmc, color_identity
+  - [ ] 1.2.6 Handle missing legality data with appropriate errors
 - [ ] 1.3 Create shared helper function `_determine_deck_color_identity` in `deck_coaching_tools.py`
   - [ ] 1.3.1 Accept card_details list from user's deck
   - [ ] 1.3.2 Aggregate all color_identity values from cards
@@ -40,9 +42,10 @@
   - [ ] 1.4.1 Accept parameters: legal_cards (DataFrame), deck_colors (set)
   - [ ] 1.4.2 Include cards where color_identity is subset of deck_colors
   - [ ] 1.4.3 Always include colorless cards (empty color_identity)
-  - [ ] 1.4.4 Check mana_cost for phyrexian mana symbols ({W/P}, {U/P}, etc.) and include
-  - [ ] 1.4.5 Include cards with only generic mana costs
-  - [ ] 1.4.6 Return filtered DataFrame of color-appropriate cards
+  - [ ] 1.4.4 Strip phyrexian mana symbols from mana_cost before evaluating color requirements
+  - [ ] 1.4.5 Treat phyrexian mana as zero cost (e.g., {W/P}{U} functionally becomes {U})
+  - [ ] 1.4.6 Include cards with only generic mana costs ({1}, {2}, {X})
+  - [ ] 1.4.7 Return filtered DataFrame of color-appropriate cards
 - [ ] 1.5 Create shared helper function `_fetch_archetype_decklists` in `deck_coaching_tools.py`
   - [ ] 1.5.1 Accept parameters: archetype_group_ids (list), format (str), limit_per_archetype (int, default: 5)
   - [ ] 1.5.2 Query decklists table joined with tournaments and deck_cards for each archetype_group_id
@@ -72,17 +75,18 @@
 - [ ] 2.2 Implement `optimize_mainboard` MCP tool in `deck_coaching_tools.py`
   - [ ] 2.2.1 Add @mcp.tool() decorator and function signature
   - [ ] 2.2.2 Accept parameters: card_details, archetype, format, top_n (default: 5)
-  - [ ] 2.2.3 Call `get_format_meta_rankings` to get top N archetypes
-  - [ ] 2.2.4 Handle empty meta data with error response
-  - [ ] 2.2.5 Query legal cards: `_get_legal_cards_for_format(format)`
-  - [ ] 2.2.6 Determine deck color identity: `_determine_deck_color_identity(card_details)`
-  - [ ] 2.2.7 Filter legal cards by color identity: `_filter_cards_by_color_identity(legal_cards, deck_colors)`
-  - [ ] 2.2.8 Extract archetype_group_ids from top N archetypes
-  - [ ] 2.2.9 Call `_fetch_archetype_decklists` to get recent decklists for each archetype (max 5 per archetype)
-  - [ ] 2.2.10 Format deck summary, archetype decklists, and filtered legal cards for prompt
-  - [ ] 2.2.11 Send to LLM with mainboard optimization prompt including legal card pool
-  - [ ] 2.2.12 Parse LLM response for recommended cards
-  - [ ] 2.2.13 Return structured response with flex spots and recommendations
+  - [ ] 2.2.3 Normalize format parameter to lowercase
+  - [ ] 2.2.4 Call `get_format_meta_rankings` to get top N archetypes
+  - [ ] 2.2.5 Handle empty meta data with error response
+  - [ ] 2.2.6 Query legal cards: `_get_legal_cards_for_format(format)`
+  - [ ] 2.2.7 Determine deck color identity: `_determine_deck_color_identity(card_details)`
+  - [ ] 2.2.8 Filter legal cards by color identity: `_filter_cards_by_color_identity(legal_cards, deck_colors)`
+  - [ ] 2.2.9 Extract archetype_group_ids from top N archetypes
+  - [ ] 2.2.10 Call `_fetch_archetype_decklists` to get recent decklists for each archetype (max 5 per archetype)
+  - [ ] 2.2.11 Format deck summary, archetype decklists, and filtered legal cards for prompt
+  - [ ] 2.2.12 Send to LLM with mainboard optimization prompt requesting JSON output
+  - [ ] 2.2.13 Parse JSON response for recommended cards
+  - [ ] 2.2.14 Return structured response with flex spots and recommendations
 - [ ] 2.3 Run unit tests and iterate until passing: `pytest tests/unit/test_deck_coaching_tools.py::test_optimize_mainboard* -v`
 
 ## 3. Sideboard Optimization (TDD)
@@ -97,18 +101,20 @@
 - [ ] 3.2 Implement `optimize_sideboard` MCP tool in `deck_coaching_tools.py`
   - [ ] 3.2.1 Add @mcp.tool() decorator and function signature
   - [ ] 3.2.2 Accept parameters: card_details, archetype, format, top_n (default: 5)
-  - [ ] 3.2.3 Call `get_format_meta_rankings` to get top N archetypes
-  - [ ] 3.2.4 Handle empty meta data with error response
-  - [ ] 3.2.5 Query legal cards: `_get_legal_cards_for_format(format)`
-  - [ ] 3.2.6 Determine deck color identity: `_determine_deck_color_identity(card_details)`
-  - [ ] 3.2.7 Filter legal cards by color identity: `_filter_cards_by_color_identity(legal_cards, deck_colors)`
-  - [ ] 3.2.8 Extract archetype_group_ids from top N archetypes
-  - [ ] 3.2.9 Call `_fetch_archetype_decklists` to get recent decklists for each archetype (max 5 per archetype)
-  - [ ] 3.2.10 Format current sideboard, archetype decklists (with sideboards), and filtered legal cards for prompt
-  - [ ] 3.2.11 Send to LLM with sideboard optimization prompt including legal card pool
-  - [ ] 3.2.12 Parse LLM response for sideboard changes
-  - [ ] 3.2.13 Validate resulting sideboard has 15 cards
-  - [ ] 3.2.14 Return structured response with additions/removals and justifications
+  - [ ] 3.2.3 Normalize format parameter to lowercase
+  - [ ] 3.2.4 Call `get_format_meta_rankings` to get top N archetypes
+  - [ ] 3.2.5 Handle empty meta data with error response
+  - [ ] 3.2.6 Query legal cards: `_get_legal_cards_for_format(format)`
+  - [ ] 3.2.7 Determine deck color identity: `_determine_deck_color_identity(card_details)`
+  - [ ] 3.2.8 Filter legal cards by color identity: `_filter_cards_by_color_identity(legal_cards, deck_colors)`
+  - [ ] 3.2.9 Extract archetype_group_ids from top N archetypes
+  - [ ] 3.2.10 Call `_fetch_archetype_decklists` to get recent decklists for each archetype (max 5 per archetype)
+  - [ ] 3.2.11 Format current sideboard, archetype decklists (with sideboards), and filtered legal cards for prompt
+  - [ ] 3.2.12 Send to LLM with sideboard optimization prompt requesting JSON output with exactly 15 cards
+  - [ ] 3.2.13 Parse JSON response for sideboard changes
+  - [ ] 3.2.14 Validate resulting sideboard has exactly 15 cards
+  - [ ] 3.2.15 If validation fails, retry with explicit 15-card requirement (up to 2 retries)
+  - [ ] 3.2.16 Return structured response with additions/removals and justifications
 - [ ] 3.3 Run unit tests and iterate until passing: `pytest tests/unit/test_deck_coaching_tools.py::test_optimize_sideboard* -v`
 
 ## 4. Integration Tests and Documentation
@@ -126,6 +132,6 @@
 
 ## 5. Validation
 
-- [ ] 2.1 Run `openspec validate add-deck-optimization-tools --strict`
+- [ ] 5.1 Run `openspec validate add-deck-optimization-tools --strict`
 - [ ] 2.2 Manual testing: Test both tools with sample decklists against current meta
 
