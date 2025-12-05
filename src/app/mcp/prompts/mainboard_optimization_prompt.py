@@ -9,7 +9,7 @@ MAINBOARD_OPTIMIZATION_PROMPT_TEMPLATE = """You are an expert Magic: The Gatheri
 
 # Your Deck
 Archetype: {archetype}
-{deck_summary}
+{deck_details}
 
 # Current Meta Context
 You are optimizing against the top {top_n} most frequent archetypes in {format}:

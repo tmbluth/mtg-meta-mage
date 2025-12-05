@@ -49,7 +49,7 @@ def parse_and_validate_decklist(decklist: str) -> dict:
     card_names = [card["card_name"] for card in parsed_cards]
     
     query = """
-        SELECT name, oracle_text, type_line, mana_cost, cmc, color_identity
+        SELECT name, oracle_text, type_line, mana_cost, cmc, color_identity, rulings
         FROM cards
         WHERE LOWER(name) = ANY(%s)
     """
@@ -70,7 +70,8 @@ def parse_and_validate_decklist(decklist: str) -> dict:
             "type_line": row[2],
             "mana_cost": row[3],
             "cmc": row[4],
-            "color_identity": row[5]
+            "color_identity": row[5],
+            "rulings": row[6] if row[6] else ""
         }
     
     # Enrich parsed cards with database info
@@ -208,17 +209,8 @@ def generate_matchup_strategy(
     """
     from src.app.mcp.prompts.coaching_prompt import COACHING_PROMPT_TEMPLATE
     
-    # Prepare deck summary for LLM
-    mainboard = [c for c in card_details if c.get("section") == "mainboard"]
-    sideboard = [c for c in card_details if c.get("section") == "sideboard"]
-    
-    deck_summary = f"""
-Mainboard ({len(mainboard)} cards):
-{_format_card_list(mainboard)}
-
-Sideboard ({len(sideboard)} cards):
-{_format_card_list(sideboard)}
-"""
+    # Prepare full decklist with all required card details for LLM
+    deck_details = _format_full_decklist(card_details)
     
     # Format matchup stats if available
     matchup_context = ""
@@ -232,7 +224,7 @@ Sideboard ({len(sideboard)} cards):
     prompt = COACHING_PROMPT_TEMPLATE.format(
         archetype=archetype,
         opponent_archetype=opponent_archetype,
-        deck_summary=deck_summary,
+        deck_details=deck_details,
         matchup_context=matchup_context
     )
     
@@ -278,6 +270,39 @@ def _format_card_list(card_details: list) -> str:
     return "\n".join(lines)
 
 
+def _format_full_decklist(card_details: list) -> str:
+    """Format full decklist with all required card details for LLM prompt.
+    
+    Includes: name, quantity, oracle_text, rulings, type_line, color_identity, mana_cost, cmc, section
+    """
+    lines = []
+    for card in card_details:
+        quantity = card.get("quantity", 1)
+        name = card.get("name", "Unknown")
+        section = card.get("section", "mainboard")
+        oracle_text = card.get("oracle_text", "")
+        rulings = card.get("rulings", "")
+        type_line = card.get("type_line", "")
+        color_identity = card.get("color_identity", [])
+        mana_cost = card.get("mana_cost", "")
+        cmc = card.get("cmc", 0)
+        
+        # Format color identity
+        color_str = "".join(color_identity) if color_identity else "Colorless"
+        
+        lines.append(f"  {quantity}x {name} [{section}]")
+        lines.append(f"    Type: {type_line}")
+        lines.append(f"    Mana Cost: {mana_cost} (CMC: {cmc})")
+        lines.append(f"    Color Identity: {color_str}")
+        if oracle_text:
+            lines.append(f"    Oracle Text: {oracle_text}")
+        if rulings:
+            lines.append(f"    Rulings: {rulings}")
+        lines.append("")  # Empty line between cards
+    
+    return "\n".join(lines)
+
+
 # ============================================================================
 # Shared Helper Functions for Deck Optimization
 # ============================================================================
@@ -290,7 +315,7 @@ def _get_legal_cards_for_format(format: str):
         format: Format name (will be normalized to lowercase)
     
     Returns:
-        List of dicts with card_id, name, type_line, mana_cost, cmc, color_identity
+        List of dicts with card_id, name, oracle_text, type_line, mana_cost, cmc, color_identity
         
     Raises:
         ValueError: If legality data is unavailable or format is invalid
@@ -304,6 +329,7 @@ def _get_legal_cards_for_format(format: str):
         SELECT DISTINCT 
             c.id as card_id,
             c.name,
+            c.oracle_text,
             c.type_line,
             c.mana_cost,
             c.cmc,
@@ -334,10 +360,11 @@ def _get_legal_cards_for_format(format: str):
                 legal_card_details.append({
                     "card_id": row[0],
                     "name": row[1],
-                    "type_line": row[2],
-                    "mana_cost": row[3],
-                    "cmc": row[4],
-                    "color_identity": row[5]
+                    "oracle_text": row[2] if row[2] else "",
+                    "type_line": row[3],
+                    "mana_cost": row[4],
+                    "cmc": row[5],
+                    "color_identity": row[6]
                 })
             
             return legal_card_details
@@ -440,9 +467,7 @@ def _fetch_archetype_decklists(
                         {
                             "name": str,
                             "quantity": int,
-                            "section": str (mainboard/sideboard),
-                            "type_line": str,
-                            "mana_cost": str
+                            "section": str (mainboard/sideboard)
                         }
                     ]
                 }
@@ -472,9 +497,7 @@ def _fetch_archetype_decklists(
             rd.start_date,
             dc.quantity,
             dc.section,
-            c.name,
-            c.type_line,
-            c.mana_cost
+            c.name
         FROM ranked_decklists rd
         INNER JOIN deck_cards dc ON rd.decklist_id = dc.decklist_id
         INNER JOIN cards c ON dc.card_id = c.id
@@ -502,8 +525,6 @@ def _fetch_archetype_decklists(
                 quantity = row[4]
                 section = row[5]
                 card_name = row[6]
-                type_line = row[7]
-                mana_cost = row[8]
                 
                 if decklist_id not in decklists_by_id:
                     decklists_by_id[decklist_id] = {
@@ -517,9 +538,7 @@ def _fetch_archetype_decklists(
                 decklists_by_id[decklist_id]["cards"].append({
                     "name": card_name,
                     "quantity": quantity,
-                    "section": section,
-                    "type_line": type_line,
-                    "mana_cost": mana_cost
+                    "section": section
                 })
             
             # Group by archetype
@@ -580,12 +599,12 @@ def _format_archetype_decklists_for_prompt(
             
             lines.append("\nMainboard:")
             for card_detail in mainboard_cards:
-                lines.append(f"  {card_detail['quantity']}x {card_detail['name']} - {card_detail['type_line']}")
+                lines.append(f"  {card_detail['quantity']}x {card_detail['name']}")
             
             if include_sideboard and sideboard_cards:
                 lines.append("\nSideboard:")
                 for card_detail in sideboard_cards:
-                    lines.append(f"  {card_detail['quantity']}x {card_detail['name']} - {card_detail['type_line']}")
+                    lines.append(f"  {card_detail['quantity']}x {card_detail['name']}")
     
     return "\n".join(lines)
 
@@ -597,7 +616,7 @@ def _format_card_details_by_type(card_details: list, max_cards: int = 500) -> st
     Groups cards by type to reduce output size and improve readability.
     
     Args:
-        card_details: List of card detail dicts with name, mana_cost, and type_line fields
+        card_details: List of card detail dicts with name, oracle_text, mana_cost, and type_line fields
         max_cards: Maximum number of cards to include (default: 500)
     
     Returns:
@@ -617,7 +636,10 @@ def _format_card_details_by_type(card_details: list, max_cards: int = 500) -> st
     
     for card in card_details[:max_cards]:
         type_line = card.get("type_line", "").lower()
+        oracle_text = card.get("oracle_text", "")
         card_entry = f"{card['name']} ({card.get('mana_cost', '')}) - {card.get('type_line', '')}"
+        if oracle_text:
+            card_entry += f"\n  {oracle_text}"
         
         if "creature" in type_line:
             creatures.append(card_entry)
@@ -749,10 +771,8 @@ def optimize_mainboard(
             limit_per_archetype=5
         )
         
-        # Format deck summary
-        mainboard = [c for c in card_details if c.get("section") == "mainboard"]
-        deck_summary = f"Mainboard ({len(mainboard)} cards):\n"
-        deck_summary += _format_card_list(mainboard)
+        # Format full decklist (main+side) with all required card details
+        deck_details = _format_full_decklist(card_details)
         
         # Format archetype decklists (mainboard only)
         archetype_text = _format_archetype_decklists_for_prompt(
@@ -768,7 +788,7 @@ def optimize_mainboard(
         prompt = MAINBOARD_OPTIMIZATION_PROMPT_TEMPLATE.format(
             format=normalized_format,
             archetype=archetype,
-            deck_summary=deck_summary,
+            deck_details=deck_details,
             top_n=top_n,
             top_n_archetype_decklists=archetype_text,
             available_card_pool=available_cards_text
@@ -883,15 +903,8 @@ def optimize_sideboard(
             limit_per_archetype=5
         )
         
-        # Format deck summary
-        mainboard = [c for c in card_details if c.get("section") == "mainboard"]
-        sideboard = [c for c in card_details if c.get("section") == "sideboard"]
-        
-        deck_summary = f"Mainboard ({len(mainboard)} cards):\n"
-        deck_summary += _format_card_list(mainboard)
-        
-        current_sideboard = f"Current Sideboard ({len(sideboard)} cards):\n"
-        current_sideboard += _format_card_list(sideboard)
+        # Format full decklist (main+side) with all required card details
+        deck_details = _format_full_decklist(card_details)
         
         # Format archetype decklists (include sideboards)
         archetype_text = _format_archetype_decklists_for_prompt(
@@ -907,8 +920,7 @@ def optimize_sideboard(
         prompt = SIDEBOARD_OPTIMIZATION_PROMPT_TEMPLATE.format(
             format=normalized_format,
             archetype=archetype,
-            deck_summary=deck_summary,
-            current_sideboard=current_sideboard,
+            deck_details=deck_details,
             top_n=top_n,
             top_n_archetype_decklists=archetype_text,
             available_card_pool=available_cards_text

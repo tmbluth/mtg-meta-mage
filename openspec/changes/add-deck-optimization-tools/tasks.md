@@ -135,3 +135,22 @@
 - [x] 5.1 Run `openspec validate add-deck-optimization-tools --strict`
 - [x] 5.2 Manual testing: Test both tools with sample decklists against current meta (verified via integration tests)
 
+## 6. Data Format Updates
+
+- [x] 6.1 Update `parse_and_validate_decklist` to include rulings field
+  - [x] 6.1.1 Updated SQL query to SELECT rulings column
+  - [x] 6.1.2 Added rulings to card_lookup dict and enriched_card output
+- [x] 6.2 Update `optimize_mainboard` and `optimize_sideboard` to use full decklist (main+side)
+  - [x] 6.2.1 Created `_format_full_decklist` helper function to format cards with all required fields: name, quantity, oracle_text, rulings, type_line, color_identity, mana_cost, cmc, section
+  - [x] 6.2.2 Updated `optimize_mainboard` to pass full decklist instead of just mainboard
+  - [x] 6.2.3 Updated `optimize_sideboard` to pass full decklist instead of separate mainboard/sideboard
+- [x] 6.3 Enhance available card pool with oracle_text
+  - [x] 6.3.1 Updated `_get_legal_cards_for_format` to fetch oracle_text from database
+  - [x] 6.3.2 Updated `_format_card_details_by_type` to include oracle_text in formatted output
+- [x] 6.4 Simplify archetype decklist formatting
+  - [x] 6.4.1 Updated `_format_archetype_decklists_for_prompt` to show only name and quantity (removed type_line)
+  - [x] 6.4.2 Updated `_fetch_archetype_decklists` query to only fetch name and quantity (removed type_line and mana_cost from SELECT and result dict)
+- [x] 6.5 Update test mocks to match new data formats
+  - [x] 6.5.1 Updated unit test mocks to include oracle_text in legal cards and remove type_line/mana_cost from archetype decklists
+  - [x] 6.5.2 Updated integration test mocks to match new query result structures
+

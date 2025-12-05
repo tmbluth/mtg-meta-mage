@@ -13,7 +13,7 @@ Opponent's Deck: {opponent_archetype}
 {matchup_context}
 
 # Your Decklist
-{deck_summary}
+{deck_details}
 
 # Task
 Provide comprehensive piloting advice for this matchup. Structure your response with the following sections:

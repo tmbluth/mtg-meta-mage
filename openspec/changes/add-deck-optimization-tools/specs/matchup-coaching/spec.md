@@ -107,7 +107,7 @@ The system SHALL provide prompt templates for mainboard optimization and sideboa
 
 #### Scenario: Load mainboard optimization prompt
 - **WHEN** `optimize_mainboard` tool formats the LLM prompt
-- **THEN** the prompt template includes placeholders for: deck_summary, archetype, top_n_archetype_decklists, legal_card_pool, format
+- **THEN** the prompt template includes placeholders for: deck_details, archetype, top_n_archetype_decklists, legal_card_pool, format
 - **AND** the top_n_archetype_decklists includes actual card lists from recent decklists
 - **AND** the legal_card_pool includes only commonly-played format-legal cards matching the deck's color identity
 - **AND** the prompt instructs the LLM to identify non-essential cards (flex spots)
@@ -117,7 +117,7 @@ The system SHALL provide prompt templates for mainboard optimization and sideboa
 
 #### Scenario: Load sideboard optimization prompt
 - **WHEN** `optimize_sideboard` tool formats the LLM prompt
-- **THEN** the prompt template includes placeholders for: deck_summary, archetype, top_n_archetype_decklists, current_sideboard, legal_card_pool, format
+- **THEN** the prompt template includes placeholders for: deck_details, archetype, top_n_archetype_decklists, current_sideboard, legal_card_pool, format
 - **AND** the top_n_archetype_decklists includes actual mainboard and sideboard card lists from recent decklists
 - **AND** the legal_card_pool includes only commonly-played format-legal cards matching the deck's color identity
 - **AND** the prompt instructs the LLM to optimize against top N archetypes based on observed cards

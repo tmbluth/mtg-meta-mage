@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.app.api.models import HealthResponse
-from src.app.api.routes import meta_routes
+from src.app.api.routes import meta_routes, deck_routes
 
 # Configure logging
 logging.basicConfig(
@@ -41,6 +41,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(meta_routes.router, prefix="/api/v1/meta", tags=["meta-analytics"])
+app.include_router(deck_routes.router, prefix="/api/v1/deck", tags=["deck-coaching"])
 
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])

@@ -47,8 +47,8 @@ class TestDeckAnalysisWorkflow:
         
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
-            ("Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"]),
-            ("Murktide Regent", "Flying, delve", "Creature — Dragon", "{5}{U}{U}", 7.0, ["U"]),
+            ("Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"], ""),
+            ("Murktide Regent", "Flying, delve", "Creature — Dragon", "{5}{U}{U}", 7.0, ["U"], ""),
         ]
         mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
 
@@ -234,21 +234,21 @@ class TestDeckOptimizationWorkflows:
         # Setup: Mock database for legal cards query
         mock_cursor = MagicMock()
         mock_cursor.fetchall.side_effect = [
-            # Legal cards query
+            # Legal cards query (card_id, name, oracle_text, type_line, mana_cost, cmc, color_identity)
             [
-                (1, "Lightning Bolt", "Instant", "{R}", 1.0, ["R"]),
-                (2, "Counterspell", "Instant", "{U}{U}", 2.0, ["U"]),
-                (3, "Murktide Regent", "Creature — Dragon", "{5}{U}{U}", 7.0, ["U"]),
+                (1, "Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"]),
+                (2, "Counterspell", "Counter target spell", "Instant", "{U}{U}", 2.0, ["U"]),
+                (3, "Murktide Regent", "Flying, delve", "Creature — Dragon", "{5}{U}{U}", 7.0, ["U"]),
             ],
-            # Archetype decklists query (archetype 1)
+            # Archetype decklists query (archetype 1) - (decklist_id, archetype_group_id, player, tournament_date, quantity, section, name)
             [
-                (100, "Crashing Footfalls", "Sorcery", "{G}{G}", 2.0, ["G"], 4, "mainboard"),
-                (100, "Force of Negation", "Instant", "{2}{U}{U}", 5.0, ["U"], 4, "sideboard"),
+                (100, 1, "Player 1", "2024-01-01", 4, "mainboard", "Crashing Footfalls"),
+                (100, 1, "Player 1", "2024-01-01", 4, "sideboard", "Force of Negation"),
             ],
             # Archetype decklists query (archetype 2)
             [
-                (101, "Colossus Hammer", "Artifact — Equipment", "{1}", 1.0, [], 4, "mainboard"),
-                (101, "Sigarda's Aid", "Enchantment", "{W}", 1.0, ["W"], 4, "mainboard"),
+                (101, 2, "Player 2", "2024-01-01", 4, "mainboard", "Colossus Hammer"),
+                (101, 2, "Player 2", "2024-01-01", 4, "mainboard", "Sigarda's Aid"),
             ],
         ]
         mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
@@ -330,16 +330,16 @@ class TestDeckOptimizationWorkflows:
         # Setup: Mock database
         mock_cursor = MagicMock()
         mock_cursor.fetchall.side_effect = [
-            # Legal cards query
+            # Legal cards query (card_id, name, oracle_text, type_line, mana_cost, cmc, color_identity)
             [
-                (1, "Grafdigger's Cage", "Artifact", "{1}", 1.0, []),
-                (2, "Chalice of the Void", "Artifact", "{X}{X}", 0.0, []),
-                (3, "Dress Down", "Enchantment", "{1}{U}", 2.0, ["U"]),
+                (1, "Grafdigger's Cage", "Prevent activated abilities from graveyards", "Artifact", "{1}", 1.0, []),
+                (2, "Chalice of the Void", "Enters with X charge counters", "Artifact", "{X}{X}", 0.0, []),
+                (3, "Dress Down", "Creatures lose all abilities", "Enchantment", "{1}{U}", 2.0, ["U"]),
             ],
-            # Archetype decklists query
+            # Archetype decklists query (decklist_id, archetype_group_id, player, tournament_date, quantity, section, name)
             [
-                (100, "Crashing Footfalls", "Sorcery", "{G}{G}", 2.0, ["G"], 4, "mainboard"),
-                (100, "Force of Negation", "Instant", "{2}{U}{U}", 5.0, ["U"], 4, "sideboard"),
+                (100, 1, "Player 1", "2024-01-01", 4, "mainboard", "Crashing Footfalls"),
+                (100, 1, "Player 1", "2024-01-01", 4, "sideboard", "Force of Negation"),
             ],
         ]
         mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
@@ -441,20 +441,20 @@ class TestDeckOptimizationWorkflows:
         mock_cursor.fetchall.side_effect = [
             # Legal cards query (mainboard)
             [
-                (1, "Lightning Bolt", "Instant", "{R}", 1.0, ["R"]),
-                (2, "Counterspell", "Instant", "{U}{U}", 2.0, ["U"]),
+                (1, "Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"]),
+                (2, "Counterspell", "Counter target spell", "Instant", "{U}{U}", 2.0, ["U"]),
             ],
             # Archetype decklists query (mainboard)
             [
-                (100, "Crashing Footfalls", "Sorcery", "{G}{G}", 2.0, ["G"], 4, "mainboard"),
+                (100, 1, "Player 1", "2024-01-01", 4, "mainboard", "Crashing Footfalls"),
             ],
             # Legal cards query (sideboard)
             [
-                (3, "Grafdigger's Cage", "Artifact", "{1}", 1.0, []),
+                (3, "Grafdigger's Cage", "Prevent activated abilities from graveyards", "Artifact", "{1}", 1.0, []),
             ],
             # Archetype decklists query (sideboard)
             [
-                (100, "Force of Negation", "Instant", "{2}{U}{U}", 5.0, ["U"], 4, "sideboard"),
+                (100, 1, "Player 1", "2024-01-01", 4, "sideboard", "Force of Negation"),
             ],
         ]
         mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor

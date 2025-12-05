@@ -31,8 +31,8 @@ class TestParseAndValidateDecklist:
         
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
-            ("Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"]),
-            ("Counterspell", "Counter target spell", "Instant", "{U}{U}", 2.0, ["U"]),
+            ("Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"], ""),
+            ("Counterspell", "Counter target spell", "Instant", "{U}{U}", 2.0, ["U"], ""),
         ]
         mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
 
@@ -190,6 +190,7 @@ class TestOptimizeMainboard:
             {
                 "card_id": 1,
                 "name": "Force of Negation",
+                "oracle_text": "Counter target noncreature spell. If this spell was cast from your hand, you may pay {1}{U}{U} rather than pay its mana cost.",
                 "type_line": "Instant",
                 "mana_cost": "{1}{U}{U}",
                 "cmc": 3.0,
@@ -198,6 +199,7 @@ class TestOptimizeMainboard:
             {
                 "card_id": 2,
                 "name": "Dress Down",
+                "oracle_text": "When Dress Down enters the battlefield, draw a card. Creatures lose all abilities.",
                 "type_line": "Enchantment",
                 "mana_cost": "{1}{U}",
                 "cmc": 2.0,
@@ -213,7 +215,7 @@ class TestOptimizeMainboard:
                     "player": "Player 1",
                     "tournament_date": "2024-01-01",
                     "cards": [
-                        {"name": "Dragon's Rage Channeler", "quantity": 4, "section": "mainboard", "type_line": "Creature", "mana_cost": "{R}"}
+                        {"name": "Dragon's Rage Channeler", "quantity": 4, "section": "mainboard"}
                     ]
                 }
             ]
@@ -373,6 +375,7 @@ class TestOptimizeSideboard:
             {
                 "card_id": 1,
                 "name": "Engineered Explosives",
+                "oracle_text": "Sunburst (This enters the battlefield with a charge counter on it for each color of mana used to pay its cost.) {X}, Sacrifice Engineered Explosives: Destroy each nonland permanent with converted mana cost X or less.",
                 "type_line": "Artifact",
                 "mana_cost": "{X}",
                 "cmc": 0.0,
@@ -388,8 +391,8 @@ class TestOptimizeSideboard:
                     "player": "Player 1",
                     "tournament_date": "2024-01-01",
                     "cards": [
-                        {"name": "Dragon's Rage Channeler", "quantity": 4, "section": "mainboard", "type_line": "Creature", "mana_cost": "{R}"},
-                        {"name": "Engineered Explosives", "quantity": 2, "section": "sideboard", "type_line": "Artifact", "mana_cost": "{X}"}
+                        {"name": "Dragon's Rage Channeler", "quantity": 4, "section": "mainboard"},
+                        {"name": "Engineered Explosives", "quantity": 2, "section": "sideboard"}
                     ]
                 }
             ]
@@ -490,7 +493,7 @@ class TestOptimizeSideboard:
         })
         
         mock_legal_cards.return_value = [
-            {"card_id": 1, "name": "Test Card", "type_line": "Instant", "mana_cost": "{1}", "cmc": 1.0, "color_identity": ["U"]}
+            {"card_id": 1, "name": "Test Card", "oracle_text": "Test oracle text", "type_line": "Instant", "mana_cost": "{1}", "cmc": 1.0, "color_identity": ["U"]}
         ]
         
         mock_fetch_decklists.return_value = {}
