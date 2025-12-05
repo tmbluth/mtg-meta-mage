@@ -4,19 +4,17 @@ An AI-powered tool for analyzing Magic: The Gathering decklists against the comp
 
 ## Features
 
-- Card data collection from Scryfall API
+- Card data collection from Scryfall API with format legality tracking
 - Tournament data collection from TopDeck.gg API
 - LLM-powered archetype classification for decklists
 - PostgreSQL database for storing tournament, player, decklist, match, cards, and archetype data
 - Initial bulk load and incremental update capabilities for all data types
-- MCP server with tools for meta research and deck coaching
+- MCP server with tools for meta research, deck coaching, and deck optimization
 - REST API for meta analytics (archetype rankings, matchup matrices)
 
 ## Roadmap
 
 - **Streamlit UI**: Meta analytics dashboard and chat interface
-- **Deck Analysis**: Submit decks for piloting guides against top meta decks  
-- **Deck Updates**: AI-powered sideboard and flex slot recommendations
 
 ## Prerequisites
 
@@ -84,8 +82,9 @@ This will create all necessary tables, indexes, and constraints.
 The database includes the following tables:
 
 #### Card Data Tables
-- **cards**: Scryfall oracle card data (card_id, name, oracle_text, rulings, type_line, mana_cost, cmc, color_identity, etc.)
+- **cards**: Scryfall oracle card data (card_id, name, oracle_text, rulings, type_line, mana_cost, cmc, color_identity, legalities, etc.)
   - Stores canonical card information from Scryfall's oracle cards bulk data
+  - Includes format legalities as JSONB for efficient filtering (e.g., `legalities->>'modern' = 'legal'`)
   - **Must be loaded before tournaments** (see Data Loading Dependencies below)
 
 #### Tournament Data Tables
@@ -213,6 +212,10 @@ The MCP server runs alongside the FastAPI application and provides discoverable 
 - `parse_and_validate_decklist` - Parse decklist and enrich with card details
 - `get_deck_matchup_stats` - Get matchup statistics for a specific archetype
 - `generate_matchup_strategy` - AI-powered coaching for specific matchups
+
+**Deck Optimization Tools:**
+- `optimize_mainboard` - Identify flex spots and recommend replacements based on top meta archetypes
+- `optimize_sideboard` - Suggest sideboard changes to answer the most frequent meta matchups
 
 The MCP server is accessible at `http://localhost:8000/mcp` and can be used by any MCP client (Claude Desktop, custom agents, etc.).
 
@@ -382,6 +385,51 @@ curl "http://localhost:8000/api/v1/meta/matchups?format=Modern"
 # Last 30 days
 curl "http://localhost:8000/api/v1/meta/matchups?format=Pioneer&days=30"
 ```
+
+### Deck Optimization MCP Tools
+
+The deck optimization tools are available through the MCP server and can be used by any MCP client (Claude Desktop, custom agents, etc.). These tools analyze your deck against the current meta and provide AI-powered recommendations.
+
+**optimize_mainboard** - Identifies flex spots in your mainboard and recommends replacements based on top meta archetypes:
+- Analyzes deck against top N meta archetypes (default: 5)
+- Filters recommendations to format-legal cards matching your deck's color identity
+- Uses actual meta decklists (up to 5 per archetype) to inform suggestions
+- Provides detailed justifications for each recommendation
+
+**optimize_sideboard** - Suggests sideboard changes to answer the most frequent meta matchups:
+- Recommends additions/removals to improve matchup coverage
+- Generates matchup-specific sideboard plans (what to bring in/out)
+- Enforces 15-card sideboard constraint with retry logic
+- Uses observed opponent sideboard strategies from meta decklists
+
+**Usage via MCP Client:**
+```python
+# Example: Optimize mainboard
+result = await client.call_tool(
+    "meta_analytics",
+    "optimize_mainboard",
+    arguments={
+        "card_details": parsed_deck["card_details"],
+        "archetype": "Murktide",
+        "format": "Modern",
+        "top_n": 5
+    }
+)
+
+# Example: Optimize sideboard
+result = await client.call_tool(
+    "meta_analytics",
+    "optimize_sideboard",
+    arguments={
+        "card_details": parsed_deck["card_details"],
+        "archetype": "Murktide",
+        "format": "Modern",
+        "top_n": 5
+    }
+)
+```
+
+For detailed documentation, examples, and workflow guides, see [tests/postman/mcp_server/README.md](tests/postman/mcp_server/README.md).
 
 ## API Attribution
 

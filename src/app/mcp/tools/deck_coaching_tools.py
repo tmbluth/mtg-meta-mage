@@ -267,12 +267,717 @@ Sideboard ({len(sideboard)} cards):
         }
 
 
-def _format_card_list(cards: list) -> str:
-    """Format a list of cards for display in prompt."""
+def _format_card_list(card_details: list) -> str:
+    """Format a list of card detail dicts for display in prompt."""
     lines = []
-    for card in cards:
+    for card in card_details:
         quantity = card.get("quantity", 1)
         name = card.get("name", "Unknown")
         card_type = card.get("type_line", "")
         lines.append(f"  {quantity}x {name} ({card_type})")
     return "\n".join(lines)
+
+
+# ============================================================================
+# Shared Helper Functions for Deck Optimization
+# ============================================================================
+
+def _get_legal_cards_for_format(format: str):
+    """
+    Query legal cards for the given format, filtered to commonly-played cards.
+    
+    Args:
+        format: Format name (will be normalized to lowercase)
+    
+    Returns:
+        List of dicts with card_id, name, type_line, mana_cost, cmc, color_identity
+        
+    Raises:
+        ValueError: If legality data is unavailable or format is invalid
+    """
+    # Normalize format to lowercase for database query
+    normalized_format = format.lower()
+    
+    # Query cards table for legal cards in this format
+    # Join with deck_cards to filter to commonly-played cards (last 180 days)
+    query = """
+        SELECT DISTINCT 
+            c.id as card_id,
+            c.name,
+            c.type_line,
+            c.mana_cost,
+            c.cmc,
+            c.color_identity
+        FROM cards c
+        INNER JOIN deck_cards dc ON c.id = dc.card_id
+        INNER JOIN decklists d ON dc.decklist_id = d.id
+        INNER JOIN tournaments t ON d.tournament_id = t.id
+        WHERE c.legalities->>%s = 'legal'
+          AND t.start_date >= CURRENT_DATE - INTERVAL '180 days'
+        ORDER BY c.name
+    """
+    
+    try:
+        with DatabaseConnection.get_cursor() as cursor:
+            cursor.execute(query, (normalized_format,))
+            results = cursor.fetchall()
+            
+            if not results:
+                raise ValueError(
+                    f"No legal cards found for format '{format}'. "
+                    "This may indicate missing legality data or an invalid format name."
+                )
+            
+            # Convert to list of card detail dicts
+            legal_card_details = []
+            for row in results:
+                legal_card_details.append({
+                    "card_id": row[0],
+                    "name": row[1],
+                    "type_line": row[2],
+                    "mana_cost": row[3],
+                    "cmc": row[4],
+                    "color_identity": row[5]
+                })
+            
+            return legal_card_details
+    
+    except Exception as e:
+        logger.error(f"Error querying legal cards for format '{format}': {e}")
+        raise ValueError(f"Failed to retrieve legal cards: {str(e)}")
+
+
+def _determine_deck_color_identity(card_details: list) -> set:
+    """
+    Determine the color identity of a deck from its card list.
+    
+    Args:
+        card_details: List of card dicts with color_identity field
+    
+    Returns:
+        Set of color letters present in the deck (e.g., {'W', 'U', 'B'})
+    """
+    deck_colors = set()
+    
+    for card in card_details:
+        color_identity = card.get("color_identity", [])
+        if color_identity:
+            deck_colors.update(color_identity)
+    
+    return deck_colors
+
+
+def _filter_cards_by_color_identity(card_details: list, deck_colors: set) -> list:
+    """
+    Filter a list of cards to those castable with the given color identity.
+    
+    Includes:
+    - Cards where color_identity is a subset of deck_colors
+    - Colorless cards (empty color_identity)
+    - Cards with only generic mana costs
+    - Cards with phyrexian mana (treated as colorless/life payment)
+    
+    Args:
+        card_details: List of card detail dicts with color_identity and mana_cost fields
+        deck_colors: Set of color letters to filter by (e.g., {'W', 'U', 'B'})
+    
+    Returns:
+        Filtered list of card details matching the color identity constraints
+    """
+    import re
+    
+    filtered = []
+    
+    for card in card_details:
+        color_identity = card.get("color_identity", [])
+        mana_cost = card.get("mana_cost", "")
+        
+        # Always include colorless cards
+        if not color_identity:
+            filtered.append(card)
+            continue
+        
+        # Strip phyrexian mana symbols from mana_cost to determine actual color requirements
+        # Phyrexian mana can be paid with life, so {W/P} doesn't require white sources
+        stripped_cost = re.sub(r'\{[WUBRG]/P\}', '', mana_cost)
+        
+        # Check if card has only generic mana after stripping phyrexian
+        generic_only = bool(re.match(r'^(\{[0-9X]\})*$', stripped_cost.strip()))
+        
+        if generic_only:
+            filtered.append(card)
+            continue
+        
+        # Include if card's color identity is a subset of deck colors
+        if set(color_identity).issubset(deck_colors):
+            filtered.append(card)
+    
+    return filtered
+
+
+def _fetch_archetype_decklists(
+    archetype_group_ids: list,
+    format: str,
+    limit_per_archetype: int = 5
+) -> dict:
+    """
+    Fetch recent decklists for each archetype.
+    
+    Args:
+        archetype_group_ids: List of archetype group IDs
+        format: Tournament format
+        limit_per_archetype: Max decklists per archetype (default: 5)
+    
+    Returns:
+        Dict mapping archetype_group_id to list of decklists with card details:
+        {
+            archetype_id: [
+                {
+                    "decklist_id": int,
+                    "player": str,
+                    "tournament_date": str,
+                    "cards": [
+                        {
+                            "name": str,
+                            "quantity": int,
+                            "section": str (mainboard/sideboard),
+                            "type_line": str,
+                            "mana_cost": str
+                        }
+                    ]
+                }
+            ]
+        }
+    """
+    query = """
+        WITH ranked_decklists AS (
+            SELECT 
+                d.id as decklist_id,
+                d.archetype_group_id,
+                d.player,
+                t.start_date,
+                ROW_NUMBER() OVER (
+                    PARTITION BY d.archetype_group_id 
+                    ORDER BY t.start_date DESC
+                ) as rn
+            FROM decklists d
+            INNER JOIN tournaments t ON d.tournament_id = t.id
+            WHERE d.archetype_group_id = ANY(%s)
+              AND LOWER(t.format) = %s
+        )
+        SELECT 
+            rd.decklist_id,
+            rd.archetype_group_id,
+            rd.player,
+            rd.start_date,
+            dc.quantity,
+            dc.section,
+            c.name,
+            c.type_line,
+            c.mana_cost
+        FROM ranked_decklists rd
+        INNER JOIN deck_cards dc ON rd.decklist_id = dc.decklist_id
+        INNER JOIN cards c ON dc.card_id = c.id
+        WHERE rd.rn <= %s
+        ORDER BY rd.archetype_group_id, rd.start_date DESC, dc.section, c.name
+    """
+    
+    result = {}
+    
+    try:
+        with DatabaseConnection.get_cursor() as cursor:
+            cursor.execute(
+                query,
+                (archetype_group_ids, format.lower(), limit_per_archetype)
+            )
+            rows = cursor.fetchall()
+            
+            # Group by decklist
+            decklists_by_id = {}
+            for row in rows:
+                decklist_id = row[0]
+                archetype_id = row[1]
+                player = row[2]
+                tournament_date = row[3]
+                quantity = row[4]
+                section = row[5]
+                card_name = row[6]
+                type_line = row[7]
+                mana_cost = row[8]
+                
+                if decklist_id not in decklists_by_id:
+                    decklists_by_id[decklist_id] = {
+                        "decklist_id": decklist_id,
+                        "archetype_group_id": archetype_id,
+                        "player": player,
+                        "tournament_date": str(tournament_date),
+                        "cards": []
+                    }
+                
+                decklists_by_id[decklist_id]["cards"].append({
+                    "name": card_name,
+                    "quantity": quantity,
+                    "section": section,
+                    "type_line": type_line,
+                    "mana_cost": mana_cost
+                })
+            
+            # Group by archetype
+            for decklist in decklists_by_id.values():
+                archetype_id = decklist["archetype_group_id"]
+                if archetype_id not in result:
+                    result[archetype_id] = []
+                result[archetype_id].append(decklist)
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error fetching archetype decklists: {e}")
+        return {}
+
+
+def _format_archetype_decklists_for_prompt(
+    archetype_decklists: dict,
+    archetype_metadata: list,
+    include_sideboard: bool = False
+) -> str:
+    """
+    Format archetype decklists into readable text for LLM prompt.
+    
+    Args:
+        archetype_decklists: Dict from _fetch_archetype_decklists
+        archetype_metadata: List of archetype info dicts with name, meta_share
+        include_sideboard: Whether to include sideboard cards (for sideboard optimization)
+    
+    Returns:
+        Formatted string with archetype decklists
+    """
+    lines = []
+    
+    # Create lookup for archetype metadata
+    metadata_lookup = {
+        arch["archetype_group_id"]: arch 
+        for arch in archetype_metadata
+    }
+    
+    for archetype_id, decklists in archetype_decklists.items():
+        metadata = metadata_lookup.get(archetype_id, {})
+        archetype_name = metadata.get("archetype", f"Archetype {archetype_id}")
+        meta_share = metadata.get("meta_share")
+        
+        lines.append(f"\n## {archetype_name}")
+        if meta_share:
+            lines.append(f"Meta Share: {meta_share:.1f}%")
+        
+        lines.append(f"\nSample Decklists ({len(decklists)} recent):")
+        
+        for i, decklist in enumerate(decklists, 1):
+            lines.append(f"\n### Sample {i} - {decklist['player']} ({decklist['tournament_date']})")
+            
+            # Group card details by section
+            mainboard_cards = [c for c in decklist["cards"] if c["section"] == "mainboard"]
+            sideboard_cards = [c for c in decklist["cards"] if c["section"] == "sideboard"]
+            
+            lines.append("\nMainboard:")
+            for card_detail in mainboard_cards:
+                lines.append(f"  {card_detail['quantity']}x {card_detail['name']} - {card_detail['type_line']}")
+            
+            if include_sideboard and sideboard_cards:
+                lines.append("\nSideboard:")
+                for card_detail in sideboard_cards:
+                    lines.append(f"  {card_detail['quantity']}x {card_detail['name']} - {card_detail['type_line']}")
+    
+    return "\n".join(lines)
+
+
+def _format_card_details_by_type(card_details: list, max_cards: int = 500) -> str:
+    """
+    Format a list of card details into concise text for LLM context.
+    
+    Groups cards by type to reduce output size and improve readability.
+    
+    Args:
+        card_details: List of card detail dicts with name, mana_cost, and type_line fields
+        max_cards: Maximum number of cards to include (default: 500)
+    
+    Returns:
+        Formatted string for prompt inclusion, grouped by card type
+    """
+    lines = []
+    
+    # Group by card type
+    creatures = []
+    instants = []
+    sorceries = []
+    artifacts = []
+    enchantments = []
+    planeswalkers = []
+    lands = []
+    other = []
+    
+    for card in card_details[:max_cards]:
+        type_line = card.get("type_line", "").lower()
+        card_entry = f"{card['name']} ({card.get('mana_cost', '')}) - {card.get('type_line', '')}"
+        
+        if "creature" in type_line:
+            creatures.append(card_entry)
+        elif "instant" in type_line:
+            instants.append(card_entry)
+        elif "sorcery" in type_line:
+            sorceries.append(card_entry)
+        elif "artifact" in type_line:
+            artifacts.append(card_entry)
+        elif "enchantment" in type_line:
+            enchantments.append(card_entry)
+        elif "planeswalker" in type_line:
+            planeswalkers.append(card_entry)
+        elif "land" in type_line:
+            lands.append(card_entry)
+        else:
+            other.append(card_entry)
+    
+    if creatures:
+        lines.append("\n### Creatures")
+        lines.extend(creatures)
+    
+    if instants:
+        lines.append("\n### Instants")
+        lines.extend(instants)
+    
+    if sorceries:
+        lines.append("\n### Sorceries")
+        lines.extend(sorceries)
+    
+    if artifacts:
+        lines.append("\n### Artifacts")
+        lines.extend(artifacts)
+    
+    if enchantments:
+        lines.append("\n### Enchantments")
+        lines.extend(enchantments)
+    
+    if planeswalkers:
+        lines.append("\n### Planeswalkers")
+        lines.extend(planeswalkers)
+    
+    if lands:
+        lines.append("\n### Lands")
+        lines.extend(lands)
+    
+    if other:
+        lines.append("\n### Other")
+        lines.extend(other)
+    
+    return "\n".join(lines)
+
+
+# ============================================================================
+# Deck Optimization MCP Tools
+# ============================================================================
+
+@mcp.tool()
+def optimize_mainboard(
+    card_details: list,
+    archetype: str,
+    format: str,
+    top_n: int = 5
+) -> dict:
+    """
+    Optimize a deck's mainboard by identifying flex spots and recommending replacements.
+    
+    Analyzes the deck against the top N most frequent archetypes in the format,
+    identifies non-essential cards (flex spots), and recommends format-legal
+    replacements that improve matchups against the current meta.
+    
+    Args:
+        card_details: List of enriched card objects from parse_and_validate_decklist
+        archetype: Your deck's archetype name
+        format: Tournament format (e.g., "Modern", "Pioneer")
+        top_n: Number of top archetypes to optimize against (default: 5)
+    
+    Returns:
+        Dictionary with:
+        - flex_spots: List of non-essential cards that can be replaced
+        - recommendations: Suggested replacement cards with justifications
+        - error: Error message if optimization fails
+    """
+    from src.app.mcp.prompts.mainboard_optimization_prompt import MAINBOARD_OPTIMIZATION_PROMPT_TEMPLATE
+    from src.clients.llm_client import get_llm_client
+    import os
+    import json
+    
+    try:
+        # Normalize format parameter
+        normalized_format = format.lower()
+        
+        # Get top N archetypes from meta
+        from . import meta_research_tools
+        meta_result = meta_research_tools.get_format_meta_rankings.fn(format=normalized_format, days=30)
+        
+        if not meta_result.get("rankings"):
+            return {
+                "error": "Insufficient meta data available for this format",
+                "archetype": archetype,
+                "format": format
+            }
+        
+        top_archetypes = meta_result["rankings"][:top_n]
+        
+        # Get format-legal, commonly-played cards (180-day filter)
+        try:
+            format_legal_card_details = _get_legal_cards_for_format(normalized_format)
+        except ValueError as e:
+            return {
+                "error": f"Card legality data unavailable: {str(e)}",
+                "archetype": archetype,
+                "format": format
+            }
+        
+        # Determine deck color identity
+        deck_colors = _determine_deck_color_identity(card_details)
+        
+        # Filter to color-appropriate cards (subset of deck's colors + colorless)
+        color_filtered_card_details = _filter_cards_by_color_identity(format_legal_card_details, deck_colors)
+        
+        # Extract archetype group IDs
+        archetype_group_ids = [arch["archetype_group_id"] for arch in top_archetypes]
+        
+        # Fetch recent decklists for top archetypes
+        archetype_decklists = _fetch_archetype_decklists(
+            archetype_group_ids=archetype_group_ids,
+            format=normalized_format,
+            limit_per_archetype=5
+        )
+        
+        # Format deck summary
+        mainboard = [c for c in card_details if c.get("section") == "mainboard"]
+        deck_summary = f"Mainboard ({len(mainboard)} cards):\n"
+        deck_summary += _format_card_list(mainboard)
+        
+        # Format archetype decklists (mainboard only)
+        archetype_text = _format_archetype_decklists_for_prompt(
+            archetype_decklists=archetype_decklists,
+            archetype_metadata=top_archetypes,
+            include_sideboard=False
+        )
+        
+        # Format available card pool (legal + commonly-played + color-filtered, max 500)
+        available_cards_text = _format_card_details_by_type(color_filtered_card_details)
+        
+        # Build prompt
+        prompt = MAINBOARD_OPTIMIZATION_PROMPT_TEMPLATE.format(
+            format=normalized_format,
+            archetype=archetype,
+            deck_summary=deck_summary,
+            top_n=top_n,
+            top_n_archetype_decklists=archetype_text,
+            available_card_pool=available_cards_text
+        )
+        
+        # Call LLM
+        model_name = os.getenv("LLM_MODEL")
+        model_provider = os.getenv("LLM_PROVIDER")
+        llm = get_llm_client(model_name, model_provider)
+        response = llm.run(prompt)
+        
+        # Parse JSON response
+        try:
+            result = json.loads(response.text)
+            return {
+                "archetype": archetype,
+                "format": format,
+                "top_n": top_n,
+                "flex_spots": result.get("flex_spots", []),
+                "recommendations": result.get("recommendations", [])
+            }
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM JSON response: {e}")
+            return {
+                "error": "Failed to parse optimization recommendations",
+                "raw_response": response.text,
+                "archetype": archetype,
+                "format": format
+            }
+    
+    except Exception as e:
+        logger.error(f"Error in optimize_mainboard: {e}")
+        return {
+            "error": str(e),
+            "archetype": archetype,
+            "format": format
+        }
+
+
+@mcp.tool()
+def optimize_sideboard(
+    card_details: list,
+    archetype: str,
+    format: str,
+    top_n: int = 5
+) -> dict:
+    """
+    Optimize a deck's sideboard to better answer the top N meta archetypes.
+    
+    Analyzes the sideboard against the most frequent archetypes, considering
+    opponent sideboard plans in post-board games. Recommends additions,
+    removals, and provides sideboard guides for each matchup.
+    
+    Args:
+        card_details: List of enriched card objects from parse_and_validate_decklist
+        archetype: Your deck's archetype name
+        format: Tournament format (e.g., "Modern", "Pioneer")
+        top_n: Number of top archetypes to optimize against (default: 5)
+    
+    Returns:
+        Dictionary with:
+        - sideboard_changes: Recommended additions and removals
+        - sideboard_plans: Game 2/3 plans for each top archetype
+        - final_sideboard: Complete 15-card sideboard
+        - error: Error message if optimization fails
+    """
+    from src.app.mcp.prompts.sideboard_optimization_prompt import SIDEBOARD_OPTIMIZATION_PROMPT_TEMPLATE
+    from src.clients.llm_client import get_llm_client
+    import os
+    import json
+    
+    try:
+        # Normalize format parameter
+        normalized_format = format.lower()
+        
+        # Get top N archetypes from meta
+        from . import meta_research_tools
+        meta_result = meta_research_tools.get_format_meta_rankings.fn(format=normalized_format, days=30)
+        
+        if not meta_result.get("rankings"):
+            return {
+                "error": "Insufficient meta data available for this format",
+                "archetype": archetype,
+                "format": format
+            }
+        
+        top_archetypes = meta_result["rankings"][:top_n]
+        
+        # Get format-legal, commonly-played cards (180-day filter)
+        try:
+            format_legal_card_details = _get_legal_cards_for_format(normalized_format)
+        except ValueError as e:
+            return {
+                "error": f"Card legality data unavailable: {str(e)}",
+                "archetype": archetype,
+                "format": format
+            }
+        
+        # Determine deck color identity
+        deck_colors = _determine_deck_color_identity(card_details)
+        
+        # Filter to color-appropriate cards (subset of deck's colors + colorless)
+        color_filtered_card_details = _filter_cards_by_color_identity(format_legal_card_details, deck_colors)
+        
+        # Extract archetype group IDs
+        archetype_group_ids = [arch["archetype_group_id"] for arch in top_archetypes]
+        
+        # Fetch recent decklists for top archetypes (including sideboards)
+        archetype_decklists = _fetch_archetype_decklists(
+            archetype_group_ids=archetype_group_ids,
+            format=normalized_format,
+            limit_per_archetype=5
+        )
+        
+        # Format deck summary
+        mainboard = [c for c in card_details if c.get("section") == "mainboard"]
+        sideboard = [c for c in card_details if c.get("section") == "sideboard"]
+        
+        deck_summary = f"Mainboard ({len(mainboard)} cards):\n"
+        deck_summary += _format_card_list(mainboard)
+        
+        current_sideboard = f"Current Sideboard ({len(sideboard)} cards):\n"
+        current_sideboard += _format_card_list(sideboard)
+        
+        # Format archetype decklists (include sideboards)
+        archetype_text = _format_archetype_decklists_for_prompt(
+            archetype_decklists=archetype_decklists,
+            archetype_metadata=top_archetypes,
+            include_sideboard=True
+        )
+        
+        # Format available card pool (legal + commonly-played + color-filtered, max 500)
+        available_cards_text = _format_card_details_by_type(color_filtered_card_details)
+        
+        # Build prompt
+        prompt = SIDEBOARD_OPTIMIZATION_PROMPT_TEMPLATE.format(
+            format=normalized_format,
+            archetype=archetype,
+            deck_summary=deck_summary,
+            current_sideboard=current_sideboard,
+            top_n=top_n,
+            top_n_archetype_decklists=archetype_text,
+            available_card_pool=available_cards_text
+        )
+        
+        # Call LLM with retry logic for 15-card validation
+        model_name = os.getenv("LLM_MODEL")
+        model_provider = os.getenv("LLM_PROVIDER")
+        llm = get_llm_client(model_name, model_provider)
+        
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            response = llm.run(prompt)
+            
+            # Parse JSON response
+            try:
+                result = json.loads(response.text)
+                final_sideboard = result.get("final_sideboard", [])
+                
+                # Validate exactly 15 cards
+                total_cards = sum(card.get("quantity", 0) for card in final_sideboard)
+                
+                if total_cards == 15:
+                    return {
+                        "archetype": archetype,
+                        "format": format,
+                        "top_n": top_n,
+                        "sideboard_changes": result.get("sideboard_changes", []),
+                        "sideboard_plans": result.get("sideboard_plans", []),
+                        "final_sideboard": final_sideboard
+                    }
+                else:
+                    logger.warning(
+                        f"Sideboard validation failed (attempt {attempt + 1}): "
+                        f"{total_cards} cards instead of 15"
+                    )
+                    
+                    if attempt < max_retries:
+                        # Retry with explicit requirement
+                        prompt += f"\n\nCRITICAL: Your previous response had {total_cards} cards. The final_sideboard MUST contain exactly 15 cards total. Please recalculate."
+                    else:
+                        # Max retries reached
+                        return {
+                            "error": f"Failed to generate valid 15-card sideboard after {max_retries + 1} attempts",
+                            "sideboard_changes": result.get("sideboard_changes", []),
+                            "sideboard_plans": result.get("sideboard_plans", []),
+                            "final_sideboard": final_sideboard,
+                            "validation_error": f"Total cards: {total_cards}, expected: 15",
+                            "archetype": archetype,
+                            "format": format
+                        }
+            
+            except json.JSONDecodeError as e:
+                if attempt < max_retries:
+                    logger.warning(f"Failed to parse JSON (attempt {attempt + 1}): {e}")
+                    prompt += "\n\nYour previous response was not valid JSON. Please respond with properly formatted JSON only."
+                else:
+                    logger.error(f"Failed to parse LLM JSON response after {max_retries + 1} attempts: {e}")
+                    return {
+                        "error": "Failed to parse optimization recommendations",
+                        "raw_response": response.text,
+                        "archetype": archetype,
+                        "format": format
+                    }
+    
+    except Exception as e:
+        logger.error(f"Error in optimize_sideboard: {e}")
+        return {
+            "error": str(e),
+            "archetype": archetype,
+            "format": format
+        }

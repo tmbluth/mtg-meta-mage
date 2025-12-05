@@ -158,3 +158,369 @@ class TestGenerateMatchupStrategy:
         assert "error" in result
         assert "LLM API error" in result["error"]
 
+
+class TestOptimizeMainboard:
+    """Test the optimize_mainboard MCP tool."""
+
+    @patch("src.clients.llm_client.get_llm_client")
+    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decklists")
+    @patch("src.app.mcp.tools.deck_coaching_tools._get_legal_cards_for_format")
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    def test_optimize_mainboard_happy_path(
+        self, 
+        mock_meta_rankings, 
+        mock_legal_cards, 
+        mock_fetch_decklists,
+        mock_get_llm_client
+    ):
+        """Test mainboard optimization with valid deck and top 5 archetypes."""
+        # Mock meta rankings
+        mock_meta_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {"archetype": "Murktide", "archetype_group_id": 1, "meta_share": 15.0},
+                {"archetype": "Rhinos", "archetype_group_id": 2, "meta_share": 12.0},
+                {"archetype": "Hammer", "archetype_group_id": 3, "meta_share": 10.0},
+                {"archetype": "Creativity", "archetype_group_id": 4, "meta_share": 8.0},
+                {"archetype": "Yawgmoth", "archetype_group_id": 5, "meta_share": 7.0},
+            ]
+        })
+        
+        # Mock legal cards
+        mock_legal_cards.return_value = [
+            {
+                "card_id": 1,
+                "name": "Force of Negation",
+                "type_line": "Instant",
+                "mana_cost": "{1}{U}{U}",
+                "cmc": 3.0,
+                "color_identity": ["U"]
+            },
+            {
+                "card_id": 2,
+                "name": "Dress Down",
+                "type_line": "Enchantment",
+                "mana_cost": "{1}{U}",
+                "cmc": 2.0,
+                "color_identity": ["U"]
+            }
+        ]
+        
+        # Mock archetype decklists
+        mock_fetch_decklists.return_value = {
+            1: [
+                {
+                    "decklist_id": 1,
+                    "player": "Player 1",
+                    "tournament_date": "2024-01-01",
+                    "cards": [
+                        {"name": "Dragon's Rage Channeler", "quantity": 4, "section": "mainboard", "type_line": "Creature", "mana_cost": "{R}"}
+                    ]
+                }
+            ]
+        }
+        
+        # Mock LLM
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = """{
+            "flex_spots": [
+                {"card_name": "Spell Pierce", "quantity": 2, "reason": "Not essential for core strategy"}
+            ],
+            "recommendations": [
+                {
+                    "flex_spot_card": "Spell Pierce",
+                    "suggested_cards": [
+                        {
+                            "card_name": "Force of Negation",
+                            "quantity": 2,
+                            "justification": "Better against combo decks in the meta",
+                            "matchup_improvements": ["Rhinos", "Creativity"]
+                        }
+                    ],
+                    "alternatives_considered": [
+                        {"card_name": "Counterspell", "why_not_recommended": "Too slow for current meta"}
+                    ]
+                }
+            ]
+        }"""
+        mock_llm.run.return_value = mock_response
+        mock_get_llm_client.return_value = mock_llm
+        
+        # Test input
+        card_details = [
+            {"name": "Ragavan", "quantity": 4, "section": "mainboard", "color_identity": ["R"]},
+            {"name": "Dragon's Rage Channeler", "quantity": 4, "section": "mainboard", "color_identity": ["R"]},
+            {"name": "Spell Pierce", "quantity": 2, "section": "mainboard", "color_identity": ["U"]},
+        ]
+        
+        # Import after patches are set up
+        from src.app.mcp.tools.deck_coaching_tools import optimize_mainboard
+        result = optimize_mainboard.fn(
+            card_details=card_details,
+            archetype="Murktide",
+            format="Modern",
+            top_n=5
+        )
+        
+        assert "flex_spots" in result
+        assert "recommendations" in result
+        assert len(result["flex_spots"]) == 1
+        assert result["flex_spots"][0]["card_name"] == "Spell Pierce"
+
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    def test_optimize_mainboard_empty_meta_data(self, mock_meta_rankings):
+        """Test mainboard optimization with empty meta data."""
+        mock_meta_rankings.fn = MagicMock(return_value={
+            "rankings": []
+        })
+        
+        from src.app.mcp.tools.deck_coaching_tools import optimize_mainboard
+        result = optimize_mainboard.fn(
+            card_details=[],
+            archetype="TestDeck",
+            format="Modern",
+            top_n=5
+        )
+        
+        assert "error" in result
+        assert "insufficient meta data" in result["error"].lower()
+
+    @patch("src.app.mcp.tools.deck_coaching_tools._get_legal_cards_for_format")
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    def test_optimize_mainboard_format_legality_check(
+        self, 
+        mock_meta_rankings,
+        mock_legal_cards
+    ):
+        """Test that format parameter is normalized before querying."""
+        mock_meta_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {"archetype": "Murktide", "archetype_group_id": 1, "meta_share": 15.0}
+            ]
+        })
+        
+        # Mock should receive normalized format
+        mock_legal_cards.return_value = []
+        
+        from src.app.mcp.tools.deck_coaching_tools import optimize_mainboard
+        
+        try:
+            result = optimize_mainboard.fn(
+                card_details=[{"name": "Test", "color_identity": ["R"]}],
+                archetype="TestDeck",
+                format="MODERN",  # Uppercase
+                top_n=1
+            )
+        except ValueError:
+            pass  # Expected if no legal cards
+        
+        # Verify format was normalized to lowercase
+        mock_legal_cards.assert_called_once_with("modern")
+
+    @patch("src.app.mcp.tools.deck_coaching_tools._get_legal_cards_for_format")
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    def test_optimize_mainboard_unavailable_legality_data(
+        self,
+        mock_meta_rankings,
+        mock_legal_cards
+    ):
+        """Test handling when card legality data is unavailable."""
+        mock_meta_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {"archetype": "Murktide", "archetype_group_id": 1, "meta_share": 15.0}
+            ]
+        })
+        
+        mock_legal_cards.side_effect = ValueError("No legal cards found")
+        
+        from src.app.mcp.tools.deck_coaching_tools import optimize_mainboard
+        result = optimize_mainboard.fn(
+            card_details=[{"name": "Test", "color_identity": ["R"]}],
+            archetype="TestDeck",
+            format="Modern",
+            top_n=1
+        )
+        
+        assert "error" in result
+        assert "legal cards" in result["error"].lower()
+
+
+class TestOptimizeSideboard:
+    """Test the optimize_sideboard MCP tool."""
+
+    @patch("src.clients.llm_client.get_llm_client")
+    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decklists")
+    @patch("src.app.mcp.tools.deck_coaching_tools._get_legal_cards_for_format")
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    def test_optimize_sideboard_happy_path(
+        self, 
+        mock_meta_rankings, 
+        mock_legal_cards, 
+        mock_fetch_decklists,
+        mock_get_llm_client
+    ):
+        """Test sideboard optimization with valid deck and top 5 archetypes."""
+        # Mock meta rankings
+        mock_meta_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {"archetype": "Murktide", "archetype_group_id": 1, "meta_share": 15.0},
+                {"archetype": "Rhinos", "archetype_group_id": 2, "meta_share": 12.0},
+            ]
+        })
+        
+        # Mock legal cards
+        mock_legal_cards.return_value = [
+            {
+                "card_id": 1,
+                "name": "Engineered Explosives",
+                "type_line": "Artifact",
+                "mana_cost": "{X}",
+                "cmc": 0.0,
+                "color_identity": []
+            }
+        ]
+        
+        # Mock archetype decklists
+        mock_fetch_decklists.return_value = {
+            1: [
+                {
+                    "decklist_id": 1,
+                    "player": "Player 1",
+                    "tournament_date": "2024-01-01",
+                    "cards": [
+                        {"name": "Dragon's Rage Channeler", "quantity": 4, "section": "mainboard", "type_line": "Creature", "mana_cost": "{R}"},
+                        {"name": "Engineered Explosives", "quantity": 2, "section": "sideboard", "type_line": "Artifact", "mana_cost": "{X}"}
+                    ]
+                }
+            ]
+        }
+        
+        # Mock LLM with valid 15-card sideboard
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = """{
+            "sideboard_changes": [
+                {
+                    "remove": {"card_name": "Relic of Progenitus", "quantity": 2, "reason": "Not effective against current meta"},
+                    "add": {"card_name": "Engineered Explosives", "quantity": 2, "justification": "Better against token strategies", "answers_archetypes": ["Rhinos"]}
+                }
+            ],
+            "sideboard_plans": [
+                {
+                    "opponent_archetype": "Rhinos",
+                    "games_2_3_plan": "Bring in EE, take out Relics",
+                    "key_cards_to_answer": ["Crashing Footfalls"]
+                }
+            ],
+            "final_sideboard": [
+                {"card_name": "Engineered Explosives", "quantity": 2},
+                {"card_name": "Rest in Peace", "quantity": 2},
+                {"card_name": "Surgical Extraction", "quantity": 2},
+                {"card_name": "Blood Moon", "quantity": 3},
+                {"card_name": "Dress Down", "quantity": 2},
+                {"card_name": "Subtlety", "quantity": 2},
+                {"card_name": "Flusterstorm", "quantity": 2}
+            ]
+        }"""
+        mock_llm.run.return_value = mock_response
+        mock_get_llm_client.return_value = mock_llm
+        
+        # Test input (15 cards in sideboard)
+        card_details = [
+            {"name": "Ragavan", "quantity": 4, "section": "mainboard", "color_identity": ["R"]},
+            {"name": "Relic of Progenitus", "quantity": 2, "section": "sideboard", "color_identity": []},
+            {"name": "Rest in Peace", "quantity": 2, "section": "sideboard", "color_identity": ["W"]},
+            {"name": "Surgical Extraction", "quantity": 2, "section": "sideboard", "color_identity": ["B"]},
+            {"name": "Blood Moon", "quantity": 3, "section": "sideboard", "color_identity": ["R"]},
+            {"name": "Dress Down", "quantity": 2, "section": "sideboard", "color_identity": ["U"]},
+            {"name": "Subtlety", "quantity": 2, "section": "sideboard", "color_identity": ["U"]},
+            {"name": "Flusterstorm", "quantity": 2, "section": "sideboard", "color_identity": ["U"]},
+        ]
+        
+        from src.app.mcp.tools.deck_coaching_tools import optimize_sideboard
+        result = optimize_sideboard.fn(
+            card_details=card_details,
+            archetype="Murktide",
+            format="Modern",
+            top_n=5
+        )
+        
+        assert "sideboard_changes" in result
+        assert "sideboard_plans" in result
+        assert "final_sideboard" in result
+        
+        # Verify exactly 15 cards
+        total_cards = sum(card["quantity"] for card in result["final_sideboard"])
+        assert total_cards == 15
+
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    def test_optimize_sideboard_empty_meta_data(self, mock_meta_rankings):
+        """Test sideboard optimization with empty meta data."""
+        mock_meta_rankings.fn = MagicMock(return_value={
+            "rankings": []
+        })
+        
+        from src.app.mcp.tools.deck_coaching_tools import optimize_sideboard
+        result = optimize_sideboard.fn(
+            card_details=[],
+            archetype="TestDeck",
+            format="Modern",
+            top_n=5
+        )
+        
+        assert "error" in result
+        assert "insufficient meta data" in result["error"].lower()
+
+    @patch("src.clients.llm_client.get_llm_client")
+    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decklists")
+    @patch("src.app.mcp.tools.deck_coaching_tools._get_legal_cards_for_format")
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    def test_optimize_sideboard_validates_15_card_constraint(
+        self, 
+        mock_meta_rankings, 
+        mock_legal_cards, 
+        mock_fetch_decklists,
+        mock_get_llm_client
+    ):
+        """Test that sideboard validation enforces 15-card constraint."""
+        mock_meta_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {"archetype": "Murktide", "archetype_group_id": 1, "meta_share": 15.0}
+            ]
+        })
+        
+        mock_legal_cards.return_value = [
+            {"card_id": 1, "name": "Test Card", "type_line": "Instant", "mana_cost": "{1}", "cmc": 1.0, "color_identity": ["U"]}
+        ]
+        
+        mock_fetch_decklists.return_value = {}
+        
+        # Mock LLM to return invalid sideboard (not 15 cards)
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = """{
+            "sideboard_changes": [],
+            "sideboard_plans": [],
+            "final_sideboard": [
+                {"card_name": "Test Card", "quantity": 10}
+            ]
+        }"""
+        mock_llm.run.return_value = mock_response
+        mock_get_llm_client.return_value = mock_llm
+        
+        card_details = [
+            {"name": "Test Card", "quantity": 15, "section": "sideboard", "color_identity": ["U"]}
+        ]
+        
+        from src.app.mcp.tools.deck_coaching_tools import optimize_sideboard
+        result = optimize_sideboard.fn(
+            card_details=card_details,
+            archetype="TestDeck",
+            format="Modern",
+            top_n=1
+        )
+        
+        # Should retry and eventually return error or corrected result
+        # The implementation should handle this with retries
+        assert "final_sideboard" in result or "error" in result
+

@@ -17,6 +17,10 @@ The collection includes requests for:
 - **Get Deck Matchup Stats** - Get matchup stats for a specific archetype
 - **Generate Matchup Strategy** - Generate AI-powered strategy advice for a matchup
 
+### Deck Optimization Tools
+- **Optimize Mainboard** - Analyze mainboard and recommend flex spot replacements based on meta
+- **Optimize Sideboard** - Suggest sideboard tweaks to answer top meta archetypes
+
 ### FastAPI Endpoints
 - **Get Archetype Rankings** - FastAPI endpoint calling MCP tool
 - **Get Matchup Matrix** - FastAPI endpoint calling MCP tool
@@ -176,6 +180,197 @@ newman run tests/postman/mcp_server/MTG_Meta_Mage_MCP_Server.postman_collection.
 ### Tool Not Found
 - Verify tool names match exactly (case-sensitive)
 - Check that the MCP server has registered all tools on startup
+
+## Tool Documentation
+
+### Deck Optimization Tools
+
+#### optimize_mainboard
+
+Analyzes a user's maindeck and identifies non-critical cards (flex spots), recommending replacements based on the current meta.
+
+**Parameters:**
+- `card_details` (list): List of card objects with `name`, `section`, and `color_identity` fields
+- `archetype` (string): The user's deck archetype name
+- `format` (string): Format name (e.g., "Modern", "Standard")
+- `top_n` (integer, default: 5): Number of top meta archetypes to analyze against
+
+**Returns:**
+- `flex_spots`: List of cards identified as flex spots with reasons
+- `recommendations`: List of recommended replacement cards with justifications
+- `archetype`: The user's archetype
+- `format`: The format analyzed
+- `top_n`: Number of meta archetypes analyzed
+
+**Example Usage:**
+
+```python
+result = await client.call_tool(
+    "meta_analytics",
+    "optimize_mainboard",
+    arguments={
+        "card_details": [
+            {"name": "Lightning Bolt", "section": "mainboard", "color_identity": ["R"]},
+            {"name": "Spell Pierce", "section": "mainboard", "color_identity": ["U"]},
+            {"name": "Murktide Regent", "section": "mainboard", "color_identity": ["U"]}
+        ],
+        "archetype": "Murktide",
+        "format": "Modern",
+        "top_n": 5
+    }
+)
+```
+
+**Example Response:**
+
+```json
+{
+  "flex_spots": [
+    {
+      "card_name": "Spell Pierce",
+      "quantity": 2,
+      "reason": "Less effective against cascade and combo archetypes dominating the current meta"
+    }
+  ],
+  "recommendations": [
+    {
+      "card_name": "Counterspell",
+      "quantity": 2,
+      "reason": "Unconditional counter better suited for stopping Crashing Footfalls and Colossus Hammer"
+    }
+  ],
+  "archetype": "Murktide",
+  "format": "Modern",
+  "top_n": 5
+}
+```
+
+#### optimize_sideboard
+
+Suggests sideboard tweaks to better answer the top N most frequent archetypes in the meta, with specific sideboard plans for each matchup.
+
+**Parameters:**
+- `card_details` (list): List of card objects with `name`, `section`, and `color_identity` fields
+- `archetype` (string): The user's deck archetype name
+- `format` (string): Format name (e.g., "Modern", "Standard")
+- `top_n` (integer, default: 5): Number of top meta archetypes to prepare for
+
+**Returns:**
+- `sideboard_changes`: List of additions/removals with reasons
+- `sideboard_plans`: Matchup-specific sideboard guides
+- `final_sideboard`: Complete 15-card sideboard after changes
+- `archetype`: The user's archetype
+- `format`: The format analyzed
+- `top_n`: Number of archetypes analyzed
+
+**Example Usage:**
+
+```python
+result = await client.call_tool(
+    "meta_analytics",
+    "optimize_sideboard",
+    arguments={
+        "card_details": [
+            {"name": "Lightning Bolt", "section": "mainboard", "color_identity": ["R"]},
+            {"name": "Murktide Regent", "section": "mainboard", "color_identity": ["U"]},
+            {"name": "Engineered Explosives", "section": "sideboard", "color_identity": []},
+            {"name": "Chalice of the Void", "section": "sideboard", "color_identity": []}
+        ],
+        "archetype": "Murktide",
+        "format": "Modern",
+        "top_n": 3
+    }
+)
+```
+
+**Example Response:**
+
+```json
+{
+  "sideboard_changes": [
+    {
+      "action": "remove",
+      "card_name": "Engineered Explosives",
+      "quantity": 2,
+      "reason": "Less relevant against current top archetypes"
+    },
+    {
+      "action": "add",
+      "card_name": "Grafdigger's Cage",
+      "quantity": 2,
+      "reason": "Strong against Rhinos' graveyard recursion and cascade strategy"
+    }
+  ],
+  "sideboard_plans": [
+    {
+      "opponent_archetype": "Rhinos",
+      "cards_in": ["Grafdigger's Cage", "Chalice of the Void"],
+      "cards_out": ["Lightning Bolt", "Dragon's Rage Channeler"],
+      "strategy": "Shut down their cascade spells with Chalice on 0, use Cage to prevent graveyard recursion"
+    }
+  ],
+  "final_sideboard": [
+    {"card_name": "Grafdigger's Cage", "quantity": 2},
+    {"card_name": "Chalice of the Void", "quantity": 3},
+    {"card_name": "Dress Down", "quantity": 2},
+    {"card_name": "Spell Pierce", "quantity": 3},
+    {"card_name": "Mystical Dispute", "quantity": 2},
+    {"card_name": "Subtlety", "quantity": 3}
+  ],
+  "archetype": "Murktide",
+  "format": "Modern",
+  "top_n": 3
+}
+```
+
+### Complete Deck Optimization Workflow
+
+For best results, use both tools in sequence:
+
+1. **Start with mainboard optimization** to identify weak cards and strengthen your game 1 strategy
+2. **Follow with sideboard optimization** to prepare for the most common matchups
+3. **Review recommendations** against your local meta and playstyle preferences
+
+**Example Workflow:**
+
+```python
+# Step 1: Parse your decklist
+deck = await client.call_tool(
+    "meta_analytics",
+    "parse_and_validate_decklist",
+    arguments={"decklist_text": "4 Lightning Bolt\n4 Murktide Regent\n..."}
+)
+
+# Step 2: Optimize mainboard
+mainboard_improvements = await client.call_tool(
+    "meta_analytics",
+    "optimize_mainboard",
+    arguments={
+        "card_details": deck["card_details"],
+        "archetype": "Murktide",
+        "format": "Modern",
+        "top_n": 5
+    }
+)
+
+# Step 3: Optimize sideboard
+sideboard_improvements = await client.call_tool(
+    "meta_analytics",
+    "optimize_sideboard",
+    arguments={
+        "card_details": deck["card_details"],
+        "archetype": "Murktide",
+        "format": "Modern",
+        "top_n": 5
+    }
+)
+```
+
+**Notes:**
+- Both tools respect format legality constraints (cards must be legal in the specified format)
+- Both tools filter cards to match your deck's color identity
+- Both tools use actual meta decklists (up to 5 recent lists per archetype) to inform recommendations
+- Sideboard tool enforces the 15-card sideboard constraint and will retry if needed
 
 ## Additional Resources
 
