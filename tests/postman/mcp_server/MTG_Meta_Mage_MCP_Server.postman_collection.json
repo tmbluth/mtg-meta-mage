@@ -168,6 +168,104 @@
       "description": "FastAPI REST endpoints that call MCP tools internally via MultiServerMCPClient. These are the recommended endpoints for testing as they work out of the box."
     },
     {
+      "name": "Deck Coaching Endpoints",
+      "item": [
+        {
+          "name": "Parse and Validate Decklist",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decklist\": \"4 Lightning Bolt\\n4 Counterspell\\n4 Murktide Regent\\n2 Spell Pierce\\n\\nSB: 2 Engineered Explosives\\nSB: 3 Chalice of the Void\"\n}"
+            },
+            "url": {
+              "raw": "{{fastapi_base_url}}/api/v1/deck/parse-decklist",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["api", "v1", "deck", "parse-decklist"]
+            },
+            "description": "Parse a decklist and enrich with card details from the database. Returns enriched card data including name, quantity, oracle_text, rulings, type_line, color_identity, mana_cost, cmc, and section."
+          },
+          "response": []
+        },
+        {
+          "name": "Optimize Mainboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_details\": [\n    {\n      \"name\": \"Lightning Bolt\",\n      \"quantity\": 4,\n      \"section\": \"mainboard\",\n      \"color_identity\": [\"R\"]\n    },\n    {\n      \"name\": \"Murktide Regent\",\n      \"quantity\": 4,\n      \"section\": \"mainboard\",\n      \"color_identity\": [\"U\"]\n    },\n    {\n      \"name\": \"Spell Pierce\",\n      \"quantity\": 2,\n      \"section\": \"mainboard\",\n      \"color_identity\": [\"U\"]\n    }\n  ],\n  \"archetype\": \"Murktide\",\n  \"format\": \"Modern\",\n  \"top_n\": 5\n}"
+            },
+            "url": {
+              "raw": "{{fastapi_base_url}}/api/v1/deck/optimize-mainboard",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["api", "v1", "deck", "optimize-mainboard"]
+            },
+            "description": "Optimize a deck's mainboard by identifying flex spots and recommending replacements based on the current meta."
+          },
+          "response": []
+        },
+        {
+          "name": "Optimize Sideboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_details\": [\n    {\n      \"name\": \"Lightning Bolt\",\n      \"quantity\": 4,\n      \"section\": \"mainboard\",\n      \"color_identity\": [\"R\"]\n    },\n    {\n      \"name\": \"Murktide Regent\",\n      \"quantity\": 4,\n      \"section\": \"mainboard\",\n      \"color_identity\": [\"U\"]\n    },\n    {\n      \"name\": \"Engineered Explosives\",\n      \"quantity\": 2,\n      \"section\": \"sideboard\",\n      \"color_identity\": []\n    },\n    {\n      \"name\": \"Chalice of the Void\",\n      \"quantity\": 3,\n      \"section\": \"sideboard\",\n      \"color_identity\": []\n    }\n  ],\n  \"archetype\": \"Murktide\",\n  \"format\": \"Modern\",\n  \"top_n\": 5\n}"
+            },
+            "url": {
+              "raw": "{{fastapi_base_url}}/api/v1/deck/optimize-sideboard",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["api", "v1", "deck", "optimize-sideboard"]
+            },
+            "description": "Optimize a deck's sideboard to better answer the top N meta archetypes, with specific sideboard plans for each matchup."
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Matchup Strategy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_details\": [\n    {\n      \"name\": \"Lightning Bolt\",\n      \"quantity\": 4,\n      \"section\": \"mainboard\",\n      \"color_identity\": [\"R\"]\n    },\n    {\n      \"name\": \"Murktide Regent\",\n      \"quantity\": 4,\n      \"section\": \"mainboard\",\n      \"color_identity\": [\"U\"]\n    },\n    {\n      \"name\": \"Spell Pierce\",\n      \"quantity\": 2,\n      \"section\": \"mainboard\",\n      \"color_identity\": [\"U\"]\n    }\n  ],\n  \"archetype\": \"Murktide\",\n  \"opponent_archetype\": \"Rhinos\",\n  \"matchup_stats\": {\n    \"win_rate\": 45.0,\n    \"match_count\": 20\n  }\n}"
+            },
+            "url": {
+              "raw": "{{fastapi_base_url}}/api/v1/deck/generate-matchup-strategy",
+              "host": ["{{fastapi_base_url}}"],
+              "path": ["api", "v1", "deck", "generate-matchup-strategy"]
+            },
+            "description": "Generate AI-powered coaching for a specific matchup, including mulligan guides, key cards, game plan by phase, and sideboard guide."
+          },
+          "response": []
+        }
+      ],
+      "description": "Deck coaching endpoints for parsing decklists, optimizing mainboards and sideboards, and generating matchup strategies."
+    },
+    {
       "name": "MCP Server (External Clients)",
       "item": [
         {

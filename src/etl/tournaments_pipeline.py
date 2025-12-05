@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 from psycopg2.extras import execute_batch
 
 from src.clients.topdeck_client import TopDeckClient
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 from src.etl.etl_utils import parse_decklist, get_last_load_timestamp, update_load_metadata, find_fuzzy_card_match
 from src.etl.base_pipeline import BasePipeline
 

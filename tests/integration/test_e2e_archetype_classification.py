@@ -14,7 +14,7 @@ from src.etl.archetype_pipeline import (
 )
 from src.etl.cards_pipeline import CardsPipeline
 from src.etl.tournaments_pipeline import TournamentsPipeline
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 

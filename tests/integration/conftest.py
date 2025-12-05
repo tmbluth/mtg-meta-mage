@@ -5,7 +5,7 @@ import pytest
 import logging
 from pathlib import Path
 
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,12 @@ def test_database():
     """Set up and tear down test database for integration tests"""
     test_db_name = os.getenv('TEST_DB_NAME')
     assert test_db_name, "TEST_DB_NAME environment variable not set"
-    schema_file = Path(__file__).parent.parent.parent / 'src' / 'database' / 'schema.sql'
+    schema_file = Path(__file__).parent.parent.parent / 'src' / 'etl' / 'database' / 'schema.sql'
+    
+    # Drop and recreate test database to ensure clean state
+    logger.info(f"Dropping and recreating test database: {test_db_name}")
+    if DatabaseConnection.database_exists(test_db_name):
+        DatabaseConnection.drop_database(test_db_name)
     
     # Initialize test database
     logger.info(f"Initializing test database: {test_db_name}")

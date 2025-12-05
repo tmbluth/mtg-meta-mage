@@ -1,13 +1,14 @@
 """ETL pipeline for loading Scryfall card data into PostgreSQL"""
 
 import time
+import json
 import logging
 from datetime import datetime
 from typing import Dict, Optional, Any
-from psycopg2.extras import execute_batch
+from psycopg2.extras import execute_batch, Json
 
 from src.clients.scryfall_client import ScryfallClient
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 from src.etl.etl_utils import get_last_load_timestamp, update_load_metadata
 from src.etl.base_pipeline import BasePipeline
 
@@ -123,7 +124,8 @@ class CardsPipeline(BasePipeline):
                                 row.get('mana_cost'),
                                 row.get('cmc'),
                                 row.get('color_identity', []),
-                                row.get('scryfall_uri')
+                                row.get('scryfall_uri'),
+                                Json(row.get('legalities', {}))  # Convert dict to JSONB
                             )
                             for row in batch
                         ]
@@ -136,8 +138,8 @@ class CardsPipeline(BasePipeline):
                                 """
                                 INSERT INTO cards (
                                     card_id, set, collector_num, name, oracle_text,
-                                    rulings, type_line, mana_cost, cmc, color_identity, scryfall_uri
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    rulings, type_line, mana_cost, cmc, color_identity, scryfall_uri, legalities
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 ON CONFLICT (card_id) DO UPDATE SET
                                     set = EXCLUDED.set,
                                     collector_num = EXCLUDED.collector_num,
@@ -148,7 +150,8 @@ class CardsPipeline(BasePipeline):
                                     mana_cost = EXCLUDED.mana_cost,
                                     cmc = EXCLUDED.cmc,
                                     color_identity = EXCLUDED.color_identity,
-                                    scryfall_uri = EXCLUDED.scryfall_uri
+                                    scryfall_uri = EXCLUDED.scryfall_uri,
+                                    legalities = EXCLUDED.legalities
                                 """,
                                 batch_data
                             )
@@ -159,8 +162,8 @@ class CardsPipeline(BasePipeline):
                                 """
                                 INSERT INTO cards (
                                     card_id, set, collector_num, name, oracle_text,
-                                    rulings, type_line, mana_cost, cmc, color_identity, scryfall_uri
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    rulings, type_line, mana_cost, cmc, color_identity, scryfall_uri, legalities
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 ON CONFLICT (card_id) DO NOTHING
                                 """,
                                 batch_data

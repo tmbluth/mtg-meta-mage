@@ -288,6 +288,51 @@ class DatabaseConnection:
             raise
     
     @classmethod
+    def drop_database(cls, database_name: str) -> None:
+        """
+        Drop a database if it exists
+        
+        Args:
+            database_name: Name of the database to drop
+        """
+        if not cls.database_exists(database_name):
+            logger.info(f"Database '{database_name}' does not exist, nothing to drop")
+            return
+        
+        params = cls._get_connection_params(database='postgres')
+        
+        # Validate required parameters
+        required_params = ['user', 'password']
+        missing_params = [p for p in required_params if not params.get(p)]
+        if missing_params:
+            raise ValueError(f"Missing required database parameters: {', '.join(missing_params)}")
+        
+        try:
+            conn = psycopg2.connect(**params)
+            conn.autocommit = True
+            cur = conn.cursor()
+            
+            # Terminate existing connections to the database
+            cur.execute(sql.SQL("""
+                SELECT pg_terminate_backend(pg_stat_activity.pid)
+                FROM pg_stat_activity
+                WHERE pg_stat_activity.datname = %s
+                AND pid <> pg_backend_pid()
+            """), [database_name])
+            
+            # Drop database
+            cur.execute(sql.SQL("DROP DATABASE {}").format(
+                sql.Identifier(database_name)
+            ))
+            
+            cur.close()
+            conn.close()
+            logger.info(f"Database '{database_name}' dropped successfully")
+        except Exception as e:
+            logger.error(f"Failed to drop database '{database_name}': {e}")
+            raise
+    
+    @classmethod
     def ensure_database_exists(cls, database_name: str) -> None:
         """
         Ensure a database exists, creating it if necessary

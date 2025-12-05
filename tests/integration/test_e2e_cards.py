@@ -6,7 +6,7 @@ from typing import Dict, List
 
 from src.clients.scryfall_client import ScryfallClient
 from src.etl.cards_pipeline import CardsPipeline
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 

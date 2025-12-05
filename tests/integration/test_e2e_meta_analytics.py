@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.app.api.main import app
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 from src.app.mcp.tools.meta_research_tools import (
     get_format_meta_rankings,
     get_format_matchup_stats

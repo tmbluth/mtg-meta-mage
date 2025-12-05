@@ -34,6 +34,7 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
   - `pydantic` - Data validation and settings management
   - `langchain-core`, `langchain-openai`, `langchain-anthropic`, `langchain-aws` - LLM integration
 - **Testing**: `pytest` with custom markers for unit/integration tests
+- **Envitonment Variables**: these can be found in .env
 
 ## Project Conventions
 

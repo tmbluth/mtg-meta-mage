@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 from src.clients.topdeck_client import TopDeckClient
 from src.etl.tournaments_pipeline import TournamentsPipeline
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 

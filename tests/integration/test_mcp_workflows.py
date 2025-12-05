@@ -47,8 +47,8 @@ class TestDeckAnalysisWorkflow:
         
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
-            ("Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"]),
-            ("Murktide Regent", "Flying, delve", "Creature — Dragon", "{5}{U}{U}", 7.0, ["U"]),
+            ("Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"], ""),
+            ("Murktide Regent", "Flying, delve", "Creature — Dragon", "{5}{U}{U}", 7.0, ["U"], ""),
         ]
         mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
 
@@ -193,4 +193,373 @@ class TestMCPToolChaining:
         # Verify the chain worked
         assert "matchup_stats" in deck_specific
         assert deck_specific["metadata"]["format"] == "Modern"
+
+
+@pytest.mark.integration
+class TestDeckOptimizationWorkflows:
+    """Test complete deck optimization workflows."""
+
+    @patch("src.clients.llm_client.get_llm_client")
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    @patch("src.app.mcp.tools.deck_coaching_tools.DatabaseConnection")
+    def test_mainboard_optimization_workflow(
+        self,
+        mock_db,
+        mock_get_rankings,
+        mock_get_llm_client,
+    ):
+        """
+        Test full mainboard optimization workflow with real deck and meta data.
+        """
+        # Setup: Mock meta rankings
+        mock_get_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {
+                    "archetype_group_id": 1,
+                    "main_title": "Rhinos",
+                    "meta_share": 15.5,
+                    "color_identity": "WUBRG",
+                },
+                {
+                    "archetype_group_id": 2,
+                    "main_title": "Hammer",
+                    "meta_share": 12.3,
+                    "color_identity": "W",
+                },
+            ],
+            "metadata": {"format": "Modern", "days": 14},
+        })
+        mock_get_rankings.return_value = mock_get_rankings.fn.return_value
+
+        # Setup: Mock database for legal cards query
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = [
+            # Legal cards query (card_id, name, oracle_text, type_line, mana_cost, cmc, color_identity)
+            [
+                (1, "Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"]),
+                (2, "Counterspell", "Counter target spell", "Instant", "{U}{U}", 2.0, ["U"]),
+                (3, "Murktide Regent", "Flying, delve", "Creature — Dragon", "{5}{U}{U}", 7.0, ["U"]),
+            ],
+            # Archetype decklists query (archetype 1) - (decklist_id, archetype_group_id, player, tournament_date, quantity, section, name)
+            [
+                (100, 1, "Player 1", "2024-01-01", 4, "mainboard", "Crashing Footfalls"),
+                (100, 1, "Player 1", "2024-01-01", 4, "sideboard", "Force of Negation"),
+            ],
+            # Archetype decklists query (archetype 2)
+            [
+                (101, 2, "Player 2", "2024-01-01", 4, "mainboard", "Colossus Hammer"),
+                (101, 2, "Player 2", "2024-01-01", 4, "mainboard", "Sigarda's Aid"),
+            ],
+        ]
+        mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
+
+        # Setup: Mock LLM
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = """{
+            "flex_spots": [
+                {
+                    "card_name": "Spell Pierce",
+                    "quantity": 2,
+                    "reason": "Less effective against combo-heavy meta"
+                }
+            ],
+            "recommendations": [
+                {
+                    "card_name": "Counterspell",
+                    "quantity": 2,
+                    "reason": "Better against Rhinos and Hammer"
+                }
+            ]
+        }"""
+        mock_llm.run.return_value = mock_response
+        mock_get_llm_client.return_value = mock_llm
+
+        # Execute: Optimize mainboard
+        from src.app.mcp.tools.deck_coaching_tools import optimize_mainboard
+
+        deck_cards = [
+            {"name": "Lightning Bolt", "section": "mainboard", "color_identity": ["R"]},
+            {"name": "Murktide Regent", "section": "mainboard", "color_identity": ["U"]},
+            {"name": "Spell Pierce", "section": "mainboard", "color_identity": ["U"]},
+        ]
+
+        result = optimize_mainboard.fn(
+            card_details=deck_cards,
+            archetype="Murktide",
+            format="Modern",
+            top_n=2,
+        )
+
+        # Verify: Result structure
+        assert "flex_spots" in result
+        assert "recommendations" in result
+        assert result["archetype"] == "Murktide"
+        assert result["format"] == "Modern"
+        assert len(result["flex_spots"]) == 1
+        assert result["flex_spots"][0]["card_name"] == "Spell Pierce"
+        assert len(result["recommendations"]) == 1
+        assert result["recommendations"][0]["card_name"] == "Counterspell"
+
+    @patch("src.clients.llm_client.get_llm_client")
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    @patch("src.app.mcp.tools.deck_coaching_tools.DatabaseConnection")
+    def test_sideboard_optimization_workflow(
+        self,
+        mock_db,
+        mock_get_rankings,
+        mock_get_llm_client,
+    ):
+        """
+        Test full sideboard optimization workflow with real deck and meta data.
+        """
+        # Setup: Mock meta rankings
+        mock_get_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {
+                    "archetype_group_id": 1,
+                    "main_title": "Rhinos",
+                    "meta_share": 15.5,
+                    "color_identity": "WUBRG",
+                },
+            ],
+            "metadata": {"format": "Modern", "days": 14},
+        })
+        mock_get_rankings.return_value = mock_get_rankings.fn.return_value
+
+        # Setup: Mock database
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = [
+            # Legal cards query (card_id, name, oracle_text, type_line, mana_cost, cmc, color_identity)
+            [
+                (1, "Grafdigger's Cage", "Prevent activated abilities from graveyards", "Artifact", "{1}", 1.0, []),
+                (2, "Chalice of the Void", "Enters with X charge counters", "Artifact", "{X}{X}", 0.0, []),
+                (3, "Dress Down", "Creatures lose all abilities", "Enchantment", "{1}{U}", 2.0, ["U"]),
+            ],
+            # Archetype decklists query (decklist_id, archetype_group_id, player, tournament_date, quantity, section, name)
+            [
+                (100, 1, "Player 1", "2024-01-01", 4, "mainboard", "Crashing Footfalls"),
+                (100, 1, "Player 1", "2024-01-01", 4, "sideboard", "Force of Negation"),
+            ],
+        ]
+        mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
+
+        # Setup: Mock LLM (with valid 15-card sideboard)
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = """{
+            "sideboard_changes": [
+                {
+                    "action": "remove",
+                    "card_name": "Engineered Explosives",
+                    "quantity": 2,
+                    "reason": "Less relevant against current meta"
+                },
+                {
+                    "action": "add",
+                    "card_name": "Grafdigger's Cage",
+                    "quantity": 2,
+                    "reason": "Strong against Rhinos graveyard strategy"
+                }
+            ],
+            "sideboard_plans": [
+                {
+                    "opponent_archetype": "Rhinos",
+                    "cards_in": ["Grafdigger's Cage"],
+                    "cards_out": ["Lightning Bolt"],
+                    "strategy": "Shut down their cascade and graveyard recursion"
+                }
+            ],
+            "final_sideboard": [
+                {"card_name": "Grafdigger's Cage", "quantity": 2},
+                {"card_name": "Chalice of the Void", "quantity": 3},
+                {"card_name": "Dress Down", "quantity": 2},
+                {"card_name": "Spell Pierce", "quantity": 3},
+                {"card_name": "Mystical Dispute", "quantity": 2},
+                {"card_name": "Subtlety", "quantity": 3}
+            ]
+        }"""
+        mock_llm.run.return_value = mock_response
+        mock_get_llm_client.return_value = mock_llm
+
+        # Execute: Optimize sideboard
+        from src.app.mcp.tools.deck_coaching_tools import optimize_sideboard
+
+        deck_cards = [
+            {"name": "Lightning Bolt", "section": "mainboard", "color_identity": ["R"]},
+            {"name": "Murktide Regent", "section": "mainboard", "color_identity": ["U"]},
+            {"name": "Engineered Explosives", "section": "sideboard", "color_identity": []},
+            {"name": "Chalice of the Void", "section": "sideboard", "color_identity": []},
+        ]
+
+        result = optimize_sideboard.fn(
+            card_details=deck_cards,
+            archetype="Murktide",
+            format="Modern",
+            top_n=1,
+        )
+
+        # Verify: Result structure
+        assert "sideboard_changes" in result
+        assert "sideboard_plans" in result
+        assert "final_sideboard" in result
+        assert result["archetype"] == "Murktide"
+        assert result["format"] == "Modern"
+        
+        # Verify: 15-card sideboard constraint
+        total_cards = sum(card["quantity"] for card in result["final_sideboard"])
+        assert total_cards == 15, f"Sideboard must have exactly 15 cards, got {total_cards}"
+
+    @patch("src.clients.llm_client.get_llm_client")
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    @patch("src.app.mcp.tools.deck_coaching_tools.DatabaseConnection")
+    def test_complete_deck_optimization_workflow(
+        self,
+        mock_db,
+        mock_get_rankings,
+        mock_get_llm_client,
+    ):
+        """
+        Test both optimization tools together for complete deck optimization.
+        """
+        # Setup: Mock meta rankings
+        mock_get_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {
+                    "archetype_group_id": 1,
+                    "main_title": "Rhinos",
+                    "meta_share": 15.5,
+                    "color_identity": "WUBRG",
+                },
+            ],
+            "metadata": {"format": "Modern", "days": 14},
+        })
+        mock_get_rankings.return_value = mock_get_rankings.fn.return_value
+
+        # Setup: Mock database
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = [
+            # Legal cards query (mainboard)
+            [
+                (1, "Lightning Bolt", "Deal 3 damage", "Instant", "{R}", 1.0, ["R"]),
+                (2, "Counterspell", "Counter target spell", "Instant", "{U}{U}", 2.0, ["U"]),
+            ],
+            # Archetype decklists query (mainboard)
+            [
+                (100, 1, "Player 1", "2024-01-01", 4, "mainboard", "Crashing Footfalls"),
+            ],
+            # Legal cards query (sideboard)
+            [
+                (3, "Grafdigger's Cage", "Prevent activated abilities from graveyards", "Artifact", "{1}", 1.0, []),
+            ],
+            # Archetype decklists query (sideboard)
+            [
+                (100, 1, "Player 1", "2024-01-01", 4, "sideboard", "Force of Negation"),
+            ],
+        ]
+        mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
+
+        # Setup: Mock LLM responses
+        mock_llm = MagicMock()
+        mainboard_response = MagicMock()
+        mainboard_response.text = """{
+            "flex_spots": [{"card_name": "Spell Pierce", "quantity": 2, "reason": "Less effective"}],
+            "recommendations": [{"card_name": "Counterspell", "quantity": 2, "reason": "Better"}]
+        }"""
+        sideboard_response = MagicMock()
+        sideboard_response.text = """{
+            "sideboard_changes": [{"action": "add", "card_name": "Grafdigger's Cage", "quantity": 2, "reason": "Good"}],
+            "sideboard_plans": [{"opponent_archetype": "Rhinos", "cards_in": ["Grafdigger's Cage"], "cards_out": ["Lightning Bolt"], "strategy": "Shut down graveyard"}],
+            "final_sideboard": [
+                {"card_name": "Grafdigger's Cage", "quantity": 2},
+                {"card_name": "Chalice of the Void", "quantity": 3},
+                {"card_name": "Dress Down", "quantity": 2},
+                {"card_name": "Spell Pierce", "quantity": 3},
+                {"card_name": "Mystical Dispute", "quantity": 2},
+                {"card_name": "Subtlety", "quantity": 3}
+            ]
+        }"""
+        mock_llm.run.side_effect = [mainboard_response, sideboard_response]
+        mock_get_llm_client.return_value = mock_llm
+
+        # Execute: Optimize mainboard first
+        from src.app.mcp.tools.deck_coaching_tools import optimize_mainboard, optimize_sideboard
+
+        deck_cards = [
+            {"name": "Lightning Bolt", "section": "mainboard", "color_identity": ["R"]},
+            {"name": "Spell Pierce", "section": "mainboard", "color_identity": ["U"]},
+            {"name": "Engineered Explosives", "section": "sideboard", "color_identity": []},
+        ]
+
+        mainboard_result = optimize_mainboard.fn(
+            card_details=deck_cards,
+            archetype="Murktide",
+            format="Modern",
+            top_n=1,
+        )
+
+        # Verify mainboard optimization
+        assert "flex_spots" in mainboard_result
+        assert "recommendations" in mainboard_result
+
+        # Execute: Optimize sideboard
+        sideboard_result = optimize_sideboard.fn(
+            card_details=deck_cards,
+            archetype="Murktide",
+            format="Modern",
+            top_n=1,
+        )
+
+        # Verify sideboard optimization
+        assert "final_sideboard" in sideboard_result
+        total_cards = sum(card["quantity"] for card in sideboard_result["final_sideboard"])
+        assert total_cards == 15
+
+    @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
+    @patch("src.app.mcp.tools.deck_coaching_tools.DatabaseConnection")
+    def test_format_legality_enforcement(
+        self,
+        mock_db,
+        mock_get_rankings,
+    ):
+        """
+        Verify format legality constraints are enforced end-to-end.
+        """
+        # Setup: Mock meta rankings
+        mock_get_rankings.fn = MagicMock(return_value={
+            "rankings": [
+                {
+                    "archetype_group_id": 1,
+                    "main_title": "Rhinos",
+                    "meta_share": 15.5,
+                    "color_identity": "WUBRG",
+                },
+            ],
+            "metadata": {"format": "Standard", "days": 14},
+        })
+        mock_get_rankings.return_value = mock_get_rankings.fn.return_value
+
+        # Setup: Mock database with no legal cards (simulating legality check failure)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = []  # No legal cards found
+        mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
+
+        # Execute: Try to optimize mainboard
+        from src.app.mcp.tools.deck_coaching_tools import optimize_mainboard
+
+        deck_cards = [
+            {"name": "Lightning Bolt", "section": "mainboard", "color_identity": ["R"]},
+        ]
+
+        result = optimize_mainboard.fn(
+            card_details=deck_cards,
+            archetype="Tempo",
+            format="Standard",
+            top_n=1,
+        )
+
+        # Verify: Error for unavailable legality data
+        assert "error" in result
+        assert "Card legality data unavailable" in result["error"]
+        assert result["format"] == "Standard"
 
