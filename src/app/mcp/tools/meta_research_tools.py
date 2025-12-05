@@ -12,7 +12,7 @@ from typing import Optional
 import polars as pl
 
 from src.app.mcp.server import mcp
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 

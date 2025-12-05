@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.etl.tournaments_pipeline import TournamentsPipeline
 from src.etl.cards_pipeline import CardsPipeline
 from src.etl.archetype_pipeline import ArchetypeClassificationPipeline
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 logging.basicConfig(
     level=logging.INFO,

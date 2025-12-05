@@ -10,7 +10,7 @@ from src.etl.archetype_pipeline import (
     ArchetypeClassificationPipeline,
     ArchetypeClassificationResponse
 )
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 
 @pytest.fixture

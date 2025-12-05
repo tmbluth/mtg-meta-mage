@@ -5,7 +5,7 @@ import pytest
 import logging
 from pathlib import Path
 
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 

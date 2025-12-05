@@ -196,7 +196,7 @@ async def get_archetype_rankings(
 # src/app/mcp/tools/meta_research_tools.py
 from fastmcp import FastMCP
 import polars as pl
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 mcp = FastMCP("meta-analytics")
 
@@ -317,4 +317,10 @@ After initial implementation, the following refactoring was completed:
    - HTTP-only approach via `MultiServerMCPClient` with session-based discovery fallback
    - Prepares for future separation of MCP server into its own repository
    - Simpler codebase, easier to debug, no in-process coupling
+
+3. **Database Folder Moved Under ETL**: `src/database/` → `src/etl/database/`
+   - Database connection and schema files moved to be co-located with ETL pipelines
+   - Updated all imports from `src.database.connection` to `src.etl.database.connection`
+   - Updated path references in scripts (`nuke_and_restart.sh`) and documentation
+   - Better organization: database is ETL infrastructure, not top-level application concern
 

@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 
 # Import shared utilities from core_utils
 from src.core_utils import normalize_card_name, parse_decklist, find_fuzzy_card_match

@@ -11,7 +11,7 @@ from typing import Optional
 
 from src.app.mcp.server import mcp
 from src.core_utils import normalize_card_name, parse_decklist
-from src.database.connection import DatabaseConnection
+from src.etl.database.connection import DatabaseConnection
 from Levenshtein import distance as levenshtein_distance
 
 logger = logging.getLogger(__name__)
@@ -243,8 +243,8 @@ Sideboard ({len(sideboard)} cards):
         from src.clients.llm_client import get_llm_client
         
         # Get model name and provider from environment
-        model_name = os.getenv("LLM_MODEL", "gpt-4o-mini")
-        model_provider = os.getenv("LLM_PROVIDER", "openai")
+        model_name = os.getenv("LLM_MODEL")
+        model_provider = os.getenv("LLM_PROVIDER")
         
         llm = get_llm_client(model_name, model_provider)
         response = llm.run(prompt)

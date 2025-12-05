@@ -9,6 +9,8 @@ An AI-powered tool for analyzing Magic: The Gathering decklists against the comp
 - LLM-powered archetype classification for decklists
 - PostgreSQL database for storing tournament, player, decklist, match, cards, and archetype data
 - Initial bulk load and incremental update capabilities for all data types
+- MCP server with tools for meta research and deck coaching
+- REST API for meta analytics (archetype rankings, matchup matrices)
 
 ## Roadmap
 
@@ -73,7 +75,7 @@ AZURE_OPENAI_API_VERSION=2024-02-15-preview
 
 Create main and test DB and initialize the database schema:
 ```bash
-uv run python src/database/init_db.py
+uv run python src/etl/database/init_db.py
 ```
 This will create all necessary tables, indexes, and constraints.
 
@@ -195,9 +197,28 @@ confidence: 0.95
 - Historical classifications are preserved in `archetype_classifications` table
 - Each decklist's `archetype_group_id` is updated to the latest classification
 
-## Meta Analytics API
+## MCP Server & API
 
-The Meta Analytics API provides REST endpoints for querying archetype performance and matchup data across all constructed formats.
+The application exposes capabilities through both an MCP server (for AI agents) and a REST API (for direct access). Both use the same underlying MCP tools, ensuring consistency.
+
+### MCP Server
+
+The MCP server runs alongside the FastAPI application and provides discoverable tools for meta research and deck coaching:
+
+**Meta Research Tools:**
+- `get_format_meta_rankings` - Archetype rankings with meta share and win rates
+- `get_format_matchup_stats` - Head-to-head matchup matrix for all archetypes
+
+**Deck Coaching Tools:**
+- `parse_and_validate_decklist` - Parse decklist and enrich with card details
+- `get_deck_matchup_stats` - Get matchup statistics for a specific archetype
+- `generate_matchup_strategy` - AI-powered coaching for specific matchups
+
+The MCP server is accessible at `http://localhost:8000/mcp` and can be used by any MCP client (Claude Desktop, custom agents, etc.).
+
+### Meta Analytics API
+
+The REST API provides endpoints for querying archetype performance and matchup data across all constructed formats.
 
 ### Starting the API Server
 
@@ -389,15 +410,20 @@ uv run pytest tests/test_your_file.py
 ```
 mtg-meta-mage/
 ├── src/
-│   ├── clients/           # External API clients (LLM, Scryfall, TopDeck)
+│   ├── clients/              # External API clients (LLM, Scryfall, TopDeck)
 │   ├── app/
-│   │   ├── api/
-│   │   └── mcp/
-│   ├── database/
-│   ├── etl/
+│   │   ├── api/              # FastAPI routes (call MCP tools)
+│   │   └── mcp/              # MCP server (business logic)
+│   │       ├── tools/         # MCP tools (meta_research, deck_coaching)
+│   │       └── prompts/       # LLM prompt templates
+│   ├── etl/                  # ETL pipelines
+│   │   ├── database/         # Database connection & schema
+│   │   └── prompts/          # ETL prompt templates
+│   └── core_utils.py         # Shared utilities (parse_decklist, etc.)
 ├── tests/
 │   ├── unit/
-│   └── integration/
+│   ├── integration/
+│   └── postman/              # Postman collections for all endpoints
 ├── pyproject.toml
 ├── AGENTS.md
 └── README.md
