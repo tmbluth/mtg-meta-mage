@@ -124,10 +124,8 @@
   - [ ] 4.3.2 Document `optimize_sideboard` tool with parameters and examples
   - [ ] 4.3.3 Add example workflows for deck optimization
 
-## 2. Validation
+## 5. Validation
 
 - [ ] 2.1 Run `openspec validate add-deck-optimization-tools --strict`
-- [ ] 2.2 Run unit tests: `pytest tests/unit/test_deck_coaching_tools.py -v`
-- [ ] 2.3 Run integration tests: `pytest tests/integration/test_mcp_workflows.py -v -m integration`
-- [ ] 2.4 Manual testing: Test both tools with sample decklists against current meta
+- [ ] 2.2 Manual testing: Test both tools with sample decklists against current meta
 
