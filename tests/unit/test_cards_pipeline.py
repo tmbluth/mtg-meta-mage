@@ -40,7 +40,14 @@ def sample_card_data():
         'cmc': 1,
         'color_identity': ['R'],
         'scryfall_uri': 'https://scryfall.com/card/m21/161',
-        'oracle_id': 'oracle_123'
+        'oracle_id': 'oracle_123',
+        'legalities': {
+            'standard': 'legal',
+            'modern': 'legal',
+            'legacy': 'legal',
+            'vintage': 'legal',
+            'commander': 'legal'
+        }
     }
 
 
@@ -88,7 +95,14 @@ def test_insert_cards_success(pipeline, mock_scryfall_client, mock_db_connection
         'mana_cost': '{R}',
         'cmc': 1,
         'color_identity': ['R'],
-        'scryfall_uri': 'https://scryfall.com/card/m21/161'
+        'scryfall_uri': 'https://scryfall.com/card/m21/161',
+        'legalities': {
+            'standard': 'legal',
+            'modern': 'legal',
+            'legacy': 'legal',
+            'vintage': 'legal',
+            'commander': 'legal'
+        }
     }
     
     mock_scryfall_client.download_oracle_cards.return_value = oracle_data
@@ -681,4 +695,117 @@ def test_insert_cards_custom_batch_size(pipeline, mock_scryfall_client, mock_db_
         assert result['cards_loaded'] == 10
         # Should be called 4 times (3+3+3+1)
         assert mock_batch.call_count == 4
+
+
+def test_transform_card_includes_legalities(mock_scryfall_client, sample_card_data):
+    """Test that transform_card_to_db_row includes legalities field"""
+    from src.clients.scryfall_client import ScryfallClient
+    
+    client = ScryfallClient()
+    transformed = client.transform_card_to_db_row(sample_card_data)
+    
+    assert 'legalities' in transformed
+    assert transformed['legalities'] == sample_card_data['legalities']
+    assert isinstance(transformed['legalities'], dict)
+
+
+def test_transform_card_handles_missing_legalities(mock_scryfall_client):
+    """Test that transform_card_to_db_row handles missing legalities field"""
+    from src.clients.scryfall_client import ScryfallClient
+    
+    card_without_legalities = {
+        'id': 'card_456',
+        'name': 'Test Card',
+        'set': 'TST',
+        'collector_number': '1'
+    }
+    
+    client = ScryfallClient()
+    transformed = client.transform_card_to_db_row(card_without_legalities)
+    
+    assert 'legalities' in transformed
+    assert transformed['legalities'] == {}
+
+
+def test_transform_card_handles_invalid_legalities(mock_scryfall_client):
+    """Test that transform_card_to_db_row handles non-dict legalities"""
+    from src.clients.scryfall_client import ScryfallClient
+    
+    card_with_invalid_legalities = {
+        'id': 'card_789',
+        'name': 'Invalid Card',
+        'legalities': 'not_a_dict'
+    }
+    
+    client = ScryfallClient()
+    transformed = client.transform_card_to_db_row(card_with_invalid_legalities)
+    
+    assert 'legalities' in transformed
+    assert transformed['legalities'] == {}
+
+
+def test_insert_cards_includes_legalities_in_batch_data(pipeline, mock_scryfall_client, mock_db_connection, sample_card_data):
+    """Test that batch_data tuples include legalities field"""
+    oracle_data = {'data': [sample_card_data]}
+    rulings_data = {'data': []}
+    
+    transformed_card = {
+        'card_id': 'card_123',
+        'name': 'Lightning Bolt',
+        'rulings': '',
+        'legalities': {'standard': 'legal', 'modern': 'legal'}
+    }
+    
+    mock_scryfall_client.download_oracle_cards.return_value = oracle_data
+    mock_scryfall_client.download_rulings.return_value = rulings_data
+    mock_scryfall_client.join_cards_with_rulings.return_value = [sample_card_data]
+    mock_scryfall_client.transform_card_to_db_row.return_value = transformed_card
+    
+    with patch('src.etl.cards_pipeline.DatabaseConnection.transaction') as mock_transaction, \
+         patch('src.etl.cards_pipeline.execute_batch') as mock_batch:
+        
+        mock_transaction.return_value.__enter__.return_value = mock_db_connection
+        mock_transaction.return_value.__exit__.return_value = None
+        
+        result = pipeline.insert_cards(update_existing=True)
+        
+        assert result['cards_loaded'] == 1
+        # Check that execute_batch was called with SQL including legalities
+        call_args = mock_batch.call_args[0]
+        assert 'legalities' in call_args[1]
+        # Check that batch data includes 12 fields (including legalities)
+        batch_data = call_args[2]
+        assert len(batch_data[0]) == 12
+
+
+def test_insert_cards_includes_legalities_in_update_clause(pipeline, mock_scryfall_client, mock_db_connection, sample_card_data):
+    """Test that ON CONFLICT UPDATE includes legalities field"""
+    oracle_data = {'data': [sample_card_data]}
+    rulings_data = {'data': []}
+    
+    transformed_card = {
+        'card_id': 'card_123',
+        'name': 'Lightning Bolt',
+        'rulings': '',
+        'legalities': {'standard': 'legal'}
+    }
+    
+    mock_scryfall_client.download_oracle_cards.return_value = oracle_data
+    mock_scryfall_client.download_rulings.return_value = rulings_data
+    mock_scryfall_client.join_cards_with_rulings.return_value = [sample_card_data]
+    mock_scryfall_client.transform_card_to_db_row.return_value = transformed_card
+    
+    with patch('src.etl.cards_pipeline.DatabaseConnection.transaction') as mock_transaction, \
+         patch('src.etl.cards_pipeline.execute_batch') as mock_batch:
+        
+        mock_transaction.return_value.__enter__.return_value = mock_db_connection
+        mock_transaction.return_value.__exit__.return_value = None
+        
+        result = pipeline.insert_cards(update_existing=True)
+        
+        assert result['cards_loaded'] == 1
+        # Check that execute_batch was called with UPDATE including legalities
+        call_args = mock_batch.call_args[0]
+        sql_query = call_args[1]
+        assert 'legalities = EXCLUDED.legalities' in sql_query
 

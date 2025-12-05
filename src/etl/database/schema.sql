@@ -129,7 +129,8 @@ CREATE TABLE IF NOT EXISTS cards (
     mana_cost TEXT,
     cmc FLOAT,
     color_identity TEXT[],
-    scryfall_uri TEXT
+    scryfall_uri TEXT,
+    legalities JSONB
 );
 
 -- Deck cards junction table linking decklists to individual cards
@@ -189,6 +190,7 @@ CREATE INDEX IF NOT EXISTS idx_matches_players ON matches(player1_id, player2_id
 -- Indexes for cards table
 CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);
 CREATE INDEX IF NOT EXISTS idx_cards_color_identity ON cards USING GIN(color_identity);
+CREATE INDEX IF NOT EXISTS idx_cards_legalities ON cards USING GIN(legalities);
 
 -- Indexes for deck_cards table
 CREATE INDEX IF NOT EXISTS idx_deck_cards_decklist_id ON deck_cards(decklist_id);

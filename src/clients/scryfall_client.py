@@ -260,6 +260,7 @@ class ScryfallClient:
         - cmc -> cmc
         - color_identity -> color_identity (array)
         - scryfall_uri -> scryfall_uri
+        - legalities -> legalities (JSONB dict)
         
         Args:
             card: Scryfall oracle card dictionary
@@ -285,6 +286,12 @@ class ScryfallClient:
             logger.warning(f"Card {card_name} ({card_id}) has non-list color_identity: {color_identity}, converting to empty list")
             color_identity = []
         
+        # Handle legalities - ensure it's a dict for JSONB compatibility
+        legalities = card.get("legalities", {})
+        if not isinstance(legalities, dict):
+            logger.warning(f"Card {card_name} ({card_id}) has non-dict legalities: {legalities}, converting to empty dict")
+            legalities = {}
+        
         # Warn if card_id or name is missing
         if not card_id:
             logger.warning(f"Card {card_name} missing card_id (id field)")
@@ -302,6 +309,7 @@ class ScryfallClient:
             "mana_cost": card.get("mana_cost"),
             "cmc": card.get("cmc"),
             "color_identity": color_identity,
-            "scryfall_uri": card.get("scryfall_uri")
+            "scryfall_uri": card.get("scryfall_uri"),
+            "legalities": legalities
         }
 
