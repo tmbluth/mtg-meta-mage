@@ -6,9 +6,9 @@ TBD - created by archiving change add-matchup-coaching. Update Purpose after arc
 ### Requirement: Shared Utility Functions Location
 The system SHALL provide shared utility functions in `src/core_utils.py` that are used by both ETL pipelines and application services.
 
-#### Scenario: Parse decklist from core utils
-- **WHEN** any module needs to parse a decklist string into cards
-- **THEN** it imports `parse_decklist` from `src.core_utils`
+#### Scenario: Parse deck from core utils
+- **WHEN** any module needs to parse a deck string into cards
+- **THEN** it imports `parse_deck` from `src.core_utils`
 - **AND** the function returns a list of dicts with keys: `quantity`, `card_name`, `section`
 
 #### Scenario: Normalize card name from core utils
@@ -69,9 +69,9 @@ The system SHALL provide a `meta_research_tools` MCP tool module containing busi
 ### Requirement: Deck Coaching Tool Operations
 The system SHALL provide a `deck_coaching_tools` MCP tool module with operations for card parsing, deck-specific matchups, and personalized piloting advice.
 
-#### Scenario: Get card details for decklist
-- **WHEN** `get_card_details` is called with a decklist string
-- **THEN** the tool parses the decklist using `parse_decklist`
+#### Scenario: Get card details for deck
+- **WHEN** `get_card_details` is called with a deck string
+- **THEN** the tool parses the deck using `parse_deck`
 - **AND** normalizes card names using `normalize_card_name`
 - **AND** queries the `cards` table for each card
 - **AND** returns card details: name, oracle_text, type_line, mana_cost, cmc, color_identity

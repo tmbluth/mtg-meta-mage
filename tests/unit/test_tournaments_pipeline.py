@@ -324,7 +324,7 @@ def test_insert_deck_cards_success(mock_db_connection, pipeline):
     """Test successful deck card insertion"""
     decklist_text = '4 Lightning Bolt\n2 Mountain'
     
-    with patch('src.etl.tournaments_pipeline.parse_decklist') as mock_parse, \
+    with patch('src.etl.tournaments_pipeline.parse_deck') as mock_parse, \
          patch('src.etl.tournaments_pipeline.execute_batch') as mock_batch:
         
         mock_parse.return_value = [
@@ -359,7 +359,7 @@ def test_insert_deck_cards_handles_missing_cards(mock_db_connection, pipeline):
     """Test that insert_deck_cards handles cards not found in database"""
     decklist_text = '4 Lightning Bolt\n2 Unknown Card'
     
-    with patch('src.etl.tournaments_pipeline.parse_decklist') as mock_parse, \
+    with patch('src.etl.tournaments_pipeline.parse_deck') as mock_parse, \
          patch('src.etl.tournaments_pipeline.execute_batch') as mock_batch, \
          patch('src.core_utils.find_fuzzy_card_match') as mock_fuzzy:
         
@@ -509,7 +509,7 @@ def test_insert_all_success(pipeline, mock_topdeck_client, mock_db_connection):
     mock_topdeck_client.get_tournament_rounds.return_value = rounds_data
     
     with patch('src.etl.tournaments_pipeline.DatabaseConnection.transaction') as mock_transaction, \
-         patch('src.etl.tournaments_pipeline.parse_decklist') as mock_parse, \
+         patch('src.etl.tournaments_pipeline.parse_deck') as mock_parse, \
          patch('src.etl.tournaments_pipeline.execute_batch'):
         
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
@@ -565,7 +565,7 @@ def test_insert_deck_cards_matches_double_faced_cards(pipeline, mock_db_connecti
     
     from unittest.mock import patch
     with patch('src.etl.tournaments_pipeline.DatabaseConnection.transaction') as mock_transaction, \
-         patch('src.etl.tournaments_pipeline.parse_decklist') as mock_parse, \
+         patch('src.etl.tournaments_pipeline.parse_deck') as mock_parse, \
          patch('src.etl.tournaments_pipeline.execute_batch'):
         
         mock_transaction.return_value.__enter__.return_value = mock_db_connection
@@ -603,7 +603,7 @@ def test_insert_deck_cards_matches_back_face_cards(pipeline, mock_db_connection)
     
     from unittest.mock import patch
     with patch('src.etl.tournaments_pipeline.DatabaseConnection.transaction') as mock_transaction, \
-         patch('src.etl.tournaments_pipeline.parse_decklist') as mock_parse, \
+         patch('src.etl.tournaments_pipeline.parse_deck') as mock_parse, \
          patch('src.etl.tournaments_pipeline.execute_batch'):
         
         mock_transaction.return_value.__enter__.return_value = mock_db_connection

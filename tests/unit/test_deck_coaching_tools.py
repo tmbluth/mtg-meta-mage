@@ -11,18 +11,18 @@ from unittest.mock import Mock, patch, MagicMock
 from src.app.mcp.tools import deck_coaching_tools
 
 # Get the underlying functions from the MCP-wrapped versions
-parse_and_validate_decklist = deck_coaching_tools.parse_and_validate_decklist.fn
+get_enriched_deck = deck_coaching_tools.get_enriched_deck.fn
 get_deck_matchup_stats = deck_coaching_tools.get_deck_matchup_stats.fn
-generate_matchup_strategy = deck_coaching_tools.generate_matchup_strategy.fn
+generate_deck_matchup_strategy = deck_coaching_tools.generate_deck_matchup_strategy.fn
 
 
-class TestParseAndValidateDecklist:
-    """Test the parse_and_validate_decklist MCP tool."""
+class TestParseAndValidateDeck:
+    """Test the get_enriched_deck MCP tool."""
 
     @patch("src.app.mcp.tools.deck_coaching_tools.DatabaseConnection")
-    @patch("src.app.mcp.tools.deck_coaching_tools.parse_decklist")
-    def test_parses_valid_decklist(self, mock_parse, mock_db):
-        """Test parsing a valid decklist."""
+    @patch("src.app.mcp.tools.deck_coaching_tools.parse_deck")
+    def test_parses_valid_deck(self, mock_parse, mock_db):
+        """Test parsing a valid deck."""
         # Setup mocks
         mock_parse.return_value = [
             {"quantity": 4, "card_name": "Lightning Bolt", "section": "mainboard"},
@@ -36,20 +36,20 @@ class TestParseAndValidateDecklist:
         ]
         mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
 
-        decklist_text = "4 Lightning Bolt\n4 Counterspell"
-        result = parse_and_validate_decklist(decklist_text)
+        deck_text = "4 Lightning Bolt\n4 Counterspell"
+        result = get_enriched_deck(deck_text)
 
         assert "card_details" in result
         assert len(result["card_details"]) == 2
         assert result["mainboard_count"] == 8
         assert result["sideboard_count"] == 0
 
-    @patch("src.app.mcp.tools.deck_coaching_tools.parse_decklist")
-    def test_handles_empty_decklist(self, mock_parse):
-        """Test handling an empty decklist."""
+    @patch("src.app.mcp.tools.deck_coaching_tools.parse_deck")
+    def test_handles_empty_deck(self, mock_parse):
+        """Test handling an empty deck."""
         mock_parse.return_value = []
 
-        result = parse_and_validate_decklist("")
+        result = get_enriched_deck("")
 
         assert result["card_details"] == []
         assert result["mainboard_count"] == 0
@@ -108,7 +108,7 @@ class TestGetDeckMatchupStats:
 
 
 class TestGenerateMatchupStrategy:
-    """Test the generate_matchup_strategy MCP tool."""
+    """Test the generate_deck_matchup_strategy MCP tool."""
 
     @patch("src.clients.llm_client.get_llm_client")
     def test_generates_strategy_with_llm(self, mock_get_llm_client):
@@ -129,7 +129,7 @@ class TestGenerateMatchupStrategy:
             "match_count": 20,
         }
 
-        result = generate_matchup_strategy(
+        result = generate_deck_matchup_strategy(
             card_details=deck_cards,
             archetype="Murktide",
             opponent_archetype="Rhinos",
@@ -148,7 +148,7 @@ class TestGenerateMatchupStrategy:
         mock_llm.run.side_effect = Exception("LLM API error")
         mock_get_llm_client.return_value = mock_llm
 
-        result = generate_matchup_strategy(
+        result = generate_deck_matchup_strategy(
             card_details=[],
             archetype="Murktide",
             opponent_archetype="Rhinos",
@@ -163,7 +163,7 @@ class TestOptimizeMainboard:
     """Test the optimize_mainboard MCP tool."""
 
     @patch("src.clients.llm_client.get_llm_client")
-    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decklists")
+    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decks")
     @patch("src.app.mcp.tools.deck_coaching_tools._get_legal_cards_for_format")
     @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
     def test_optimize_mainboard_happy_path(
@@ -351,7 +351,7 @@ class TestOptimizeSideboard:
     """Test the optimize_sideboard MCP tool."""
 
     @patch("src.clients.llm_client.get_llm_client")
-    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decklists")
+    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decks")
     @patch("src.app.mcp.tools.deck_coaching_tools._get_legal_cards_for_format")
     @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
     def test_optimize_sideboard_happy_path(
@@ -475,7 +475,7 @@ class TestOptimizeSideboard:
         assert "insufficient meta data" in result["error"].lower()
 
     @patch("src.clients.llm_client.get_llm_client")
-    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decklists")
+    @patch("src.app.mcp.tools.deck_coaching_tools._fetch_archetype_decks")
     @patch("src.app.mcp.tools.deck_coaching_tools._get_legal_cards_for_format")
     @patch("src.app.mcp.tools.meta_research_tools.get_format_meta_rankings")
     def test_optimize_sideboard_validates_15_card_constraint(

@@ -7,14 +7,14 @@ from typing import Optional
 from src.etl.database.connection import DatabaseConnection
 
 # Import shared utilities from core_utils
-from src.core_utils import normalize_card_name, parse_decklist, find_fuzzy_card_match
+from src.core_utils import normalize_card_name, parse_deck, find_fuzzy_card_match
 
 logger = logging.getLogger(__name__)
 
 # Re-export shared functions for backward compatibility
 __all__ = [
     'normalize_card_name',
-    'parse_decklist', 
+    'parse_deck', 
     'find_fuzzy_card_match',
     'get_last_load_timestamp',
     'update_load_metadata'

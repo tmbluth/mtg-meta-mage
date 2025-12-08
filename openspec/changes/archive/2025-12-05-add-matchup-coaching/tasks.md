@@ -32,7 +32,7 @@
 - [x] 5.1 Create `src/app/mcp/tools/deck_coaching_tools.py` with FastMCP instance
 - [x] 5.2 Implement `@mcp.tool() parse_and_validate_decklist` operation (uses `parse_decklist`, queries DB)
 - [x] 5.3 Implement `@mcp.tool() get_deck_matchup_stats` operation (calls meta_research_tools)
-- [x] 5.4 Implement `@mcp.tool() generate_matchup_strategy` operation (LLM call with coaching prompt)
+- [x] 5.4 Implement `@mcp.tool() generate_deck_matchup_strategy` operation (LLM call with coaching prompt)
 - [x] 5.5 Register all tools with MCP server
 
 ## 6. Coaching Prompt

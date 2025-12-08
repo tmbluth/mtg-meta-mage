@@ -14,12 +14,12 @@ Archetype: {archetype}
 # Current Meta Context
 You are optimizing against the top {top_n} most frequent archetypes in {format}:
 
-{top_n_archetype_decklists}
+{top_n_archetype_decks}
 
 # Available Card Pool
 Below is a curated list of cards for you to choose from. This list has been filtered to:
 - Cards legal in {format}
-- Cards that have appeared in tournament decklists in the recent past
+- Cards that have appeared in tournament decks in the recent past
 - Cards matching your deck's color identity (including colorless)
 - Limited to ~500 most relevant cards
 
@@ -35,7 +35,7 @@ Optimize the sideboard to better answer the top {top_n} archetypes, considering:
 1. Only suggest cards from the available card pool above
 2. The final sideboard MUST contain exactly 15 cards total
 3. Recommend specific additions (cards to add) and removals (cards to cut)
-4. Justify each change based on actual cards observed in opponent decklists and sideboards
+4. Justify each change based on actual cards observed in opponent decks and sideboards
 5. Consider post-sideboard games: what do opponents bring in against your archetype?
 6. Explain how the sideboard plan changes for games 2 and 3 against each top archetype
 
@@ -53,7 +53,7 @@ Return your analysis as valid JSON with the following structure:
       "add": {{
         "card_name": "Card to Add",
         "quantity": 2,
-        "justification": "Why this card is needed. Reference specific threats from opponent decklists and sideboards.",
+        "justification": "Why this card is needed. Reference specific threats from opponent decks and sideboards.",
         "answers_archetypes": ["Archetype 1", "Archetype 2"]
       }}
     }}

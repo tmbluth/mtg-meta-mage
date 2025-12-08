@@ -13,7 +13,7 @@ The collection includes requests for:
 - **Get Format Matchup Stats** - Get complete matchup matrix for the format
 
 ### Deck Coaching Tools
-- **Parse and Validate Decklist** - Parse a decklist and enrich with card details
+- **Get Enriched Deck** - Parse a deck and enrich with card details from database
 - **Get Deck Matchup Stats** - Get matchup stats for a specific archetype
 - **Generate Matchup Strategy** - Generate AI-powered strategy advice for a matchup
 
@@ -334,10 +334,10 @@ For best results, use both tools in sequence:
 **Example Workflow:**
 
 ```python
-# Step 1: Parse your decklist
+# Step 1: Parse your deck
 deck = await client.call_tool(
     "meta_analytics",
-    "parse_and_validate_decklist",
+    "get_enriched_deck",
     arguments={"decklist_text": "4 Lightning Bolt\n4 Murktide Regent\n..."}
 )
 
@@ -369,7 +369,7 @@ sideboard_improvements = await client.call_tool(
 **Notes:**
 - Both tools respect format legality constraints (cards must be legal in the specified format)
 - Both tools filter cards to match your deck's color identity
-- Both tools use actual meta decklists (up to 5 recent lists per archetype) to inform recommendations
+- Both tools use actual meta decks (up to 5 recent lists per archetype) to inform recommendations
 - Sideboard tool enforces the 15-card sideboard constraint and will retry if needed
 
 ## Additional Resources

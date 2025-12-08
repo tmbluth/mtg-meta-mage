@@ -1,13 +1,13 @@
 # MTG Meta Mage
 
-An AI-powered tool for analyzing Magic: The Gathering decklists against the competitive meta. Users can submit a decklist and format to get insights via LLM analysis.
+An AI-powered tool for analyzing Magic: The Gathering decks against the competitive meta. Users can submit a deck and format to get insights via LLM analysis.
 
 ## Features
 
 - Card data collection from Scryfall API with format legality tracking
 - Tournament data collection from TopDeck.gg API
-- LLM-powered archetype classification for decklists
-- PostgreSQL database for storing tournament, player, decklist, match, cards, and archetype data
+- LLM-powered archetype classification for decks
+- PostgreSQL database for storing tournament, player, deck, match, cards, and archetype data
 - Initial bulk load and incremental update capabilities for all data types
 - MCP server with tools for meta research, deck coaching, and deck optimization
 - REST API for meta analytics (archetype rankings, matchup matrices)
@@ -90,15 +90,15 @@ The database includes the following tables:
 #### Tournament Data Tables
 - **tournaments**: Tournament metadata (ID, name, format, dates, location). **Commander and Limited formats are filtered out**
 - **players**: Player performance data per tournament (depends on `tournaments`)
-- **decklists**: Decklist text storage linked to players (depends on `players`)
+- **decklists**: Deck list text storage linked to players (depends on `players`)
 - **match_rounds**: Round information for tournaments (depends on `tournaments`)
 - **matches**: Individual match results (1v1 only) (depends on `match_rounds` and `players`)
 
 #### Card + Tournament Table
-- **deck_cards**: Junction table linking tournament decklists to individual cards
-  - Stores parsed card entries from decklists with quantities and sections (mainboard/sideboard)
+- **deck_cards**: Junction table linking tournament decks to individual cards
+  - Stores parsed card entries from decks with quantities and sections (mainboard/sideboard)
   - Depends on both `decklists` and `cards` tables
-  - Cards are parsed from `decklist_text` using `parse_decklist()` utility function
+  - Cards are parsed from `decklist_text` using `parse_deck()` utility function
 
 #### Archetype Classification Tables
 - **archetype_groups**: Stores unique archetype definitions (format, main_title, color_identity, strategy)
@@ -118,7 +118,7 @@ The database includes the following tables:
 
 **IMPORTANT**: Tables must be loaded in a specific order due to foreign key constraints:
 
-1. **Cards must be loaded before tournaments** - The `deck_cards` table has a foreign key to `cards`. If cards aren't loaded first, decklist parsing will still run but cards won't be found and won't be stored in `deck_cards`, resulting in incomplete decklist data.
+1. **Cards must be loaded before tournaments** - The `deck_cards` table has a foreign key to `cards`. If cards aren't loaded first, deck parsing will still run but cards won't be found and won't be stored in `deck_cards`, resulting in incomplete deck data.
 
 2. **Tournament data internal order** (handled automatically by the pipeline):
    - `tournaments` → `players` → `decklists` → `deck_cards` (requires cards to exist)
@@ -134,7 +134,7 @@ The database includes the following tables:
 
 #### Loading Card Data from Scryfall
 
-Before loading tournaments, you should load card data from Scryfall. This populates the `cards` table with oracle card information needed for decklist parsing.
+Before loading tournaments, you should load card data from Scryfall. This populates the `cards` table with oracle card information needed for deck parsing.
 
 ```bash
 # Initial load (full refresh)
@@ -149,7 +149,7 @@ uv run python src/etl/main.py --data-type cards --mode initial --batch-size 500
 
 #### Loading Tournament Data
 
-The incremental load automatically tracks the last loaded tournament timestamp and only fetches new data. When tournaments are loaded, decklists are automatically parsed and linked to cards in the `deck_cards` table.
+The incremental load automatically tracks the last loaded tournament timestamp and only fetches new data. When tournaments are loaded, decks are automatically parsed and linked to cards in the `deck_cards` table.
 
 The TopDeck API has a rate limit of 200 requests per minute. The client automatically enforces this limit with a 300ms delay between requests and includes retry logic for rate limit errors.
 
@@ -163,7 +163,7 @@ uv run python src/etl/main.py --data-type tournaments --mode incremental
 
 #### Loading Archetype Classifications
 
-Archetype classification uses LLMs to automatically categorize decklists by analyzing mainboard cards. This requires both card and tournament data to be loaded first, and requires LLM API credentials.
+Archetype classification uses LLMs to automatically categorize decks by analyzing mainboard cards. This requires both card and tournament data to be loaded first, and requires LLM API credentials.
 
 **Key Features:**
 - Analyzes mainboard cards (name, oracle text, type, mana cost, CMC, color identity)
@@ -174,10 +174,10 @@ Archetype classification uses LLMs to automatically categorize decklists by anal
 **Strategy Types:** aggro, midrange, control, ramp, combo
 
 ```bash
-# Initial load - classify all unclassified decklists
+# Initial load - classify all unclassified decks
 uv run python src/etl/main.py --data-type archetypes --mode initial --model-provider azure_openai --prompt-id archetype_classification_v1
 
-# Incremental load - classify decklists from tournaments since last archetype load
+# Incremental load - classify decks from tournaments since last archetype load
 uv run python src/etl/main.py --data-type archetypes --mode incremental --model-provider azure_openai --prompt-id archetype_classification_v1
 ```
 
@@ -192,9 +192,9 @@ confidence: 0.95
 **Reclassification Strategy:**
 - Update `LLM_MODEL` environment variable to use a different model
 - Modify prompt template in `src/etl/prompts/archetype_classification_v{?}.txt` (or create new version)
-- Run `--mode initial` to reclassify existing decklists with new model/prompt
+- Run `--mode initial` to reclassify existing decks with new model/prompt
 - Historical classifications are preserved in `archetype_classifications` table
-- Each decklist's `archetype_group_id` is updated to the latest classification
+- Each deck's `archetype_group_id` is updated to the latest classification
 
 ## MCP Server & API
 
@@ -209,9 +209,9 @@ The MCP server runs alongside the FastAPI application and provides discoverable 
 - `get_format_matchup_stats` - Head-to-head matchup matrix for all archetypes
 
 **Deck Coaching Tools:**
-- `parse_and_validate_decklist` - Parse decklist and enrich with card details
+- `get_enriched_deck` - Parse deck and enrich with card details from database
 - `get_deck_matchup_stats` - Get matchup statistics for a specific archetype
-- `generate_matchup_strategy` - AI-powered coaching for specific matchups
+- `generate_deck_matchup_strategy` - AI-powered coaching for specific matchups
 
 **Deck Optimization Tools:**
 - `optimize_mainboard` - Identify flex spots and recommend replacements based on top meta archetypes
@@ -393,14 +393,14 @@ The deck optimization tools are available through the MCP server and can be used
 **optimize_mainboard** - Identifies flex spots in your mainboard and recommends replacements based on top meta archetypes:
 - Analyzes deck against top N meta archetypes (default: 5)
 - Filters recommendations to format-legal cards matching your deck's color identity
-- Uses actual meta decklists (up to 5 per archetype) to inform suggestions
+- Uses actual meta decks (up to 5 per archetype) to inform suggestions
 - Provides detailed justifications for each recommendation
 
 **optimize_sideboard** - Suggests sideboard changes to answer the most frequent meta matchups:
 - Recommends additions/removals to improve matchup coverage
 - Generates matchup-specific sideboard plans (what to bring in/out)
 - Enforces 15-card sideboard constraint with retry logic
-- Uses observed opponent sideboard strategies from meta decklists
+- Uses observed opponent sideboard strategies from meta decks
 
 **Usage via MCP Client:**
 ```python
@@ -467,7 +467,7 @@ mtg-meta-mage/
 │   ├── etl/                  # ETL pipelines
 │   │   ├── database/         # Database connection & schema
 │   │   └── prompts/          # ETL prompt templates
-│   └── core_utils.py         # Shared utilities (parse_decklist, etc.)
+│   └── core_utils.py         # Shared utilities (parse_deck, etc.)
 ├── tests/
 │   ├── unit/
 │   ├── integration/

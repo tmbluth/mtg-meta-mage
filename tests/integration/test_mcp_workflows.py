@@ -15,9 +15,9 @@ from src.app.mcp.tools import meta_research_tools, deck_coaching_tools
 # Get the underlying functions from the MCP-wrapped versions
 get_format_meta_rankings = meta_research_tools.get_format_meta_rankings.fn
 get_format_matchup_stats = meta_research_tools.get_format_matchup_stats.fn
-parse_and_validate_decklist = deck_coaching_tools.parse_and_validate_decklist.fn
+get_enriched_deck = deck_coaching_tools.get_enriched_deck.fn
 get_deck_matchup_stats = deck_coaching_tools.get_deck_matchup_stats.fn
-generate_matchup_strategy = deck_coaching_tools.generate_matchup_strategy.fn
+generate_deck_matchup_strategy = deck_coaching_tools.generate_deck_matchup_strategy.fn
 
 
 @pytest.mark.integration
@@ -27,7 +27,7 @@ class TestDeckAnalysisWorkflow:
     @patch("src.app.mcp.tools.meta_research_tools._fetch_archetype_data")
     @patch("src.app.mcp.tools.meta_research_tools._fetch_match_data")
     @patch("src.app.mcp.tools.deck_coaching_tools.DatabaseConnection")
-    @patch("src.app.mcp.tools.deck_coaching_tools.parse_decklist")
+    @patch("src.app.mcp.tools.deck_coaching_tools.parse_deck")
     def test_complete_deck_analysis_workflow(
         self,
         mock_parse,
@@ -36,10 +36,10 @@ class TestDeckAnalysisWorkflow:
         mock_archetype_data,
     ):
         """
-        Test complete workflow: parse decklist -> get meta rankings -> 
+        Test complete workflow: parse deck -> get meta rankings -> 
         get matchup stats -> analyze positioning.
         """
-        # Setup: Parse a decklist
+        # Setup: Parse a deck
         mock_parse.return_value = [
             {"quantity": 4, "card_name": "Lightning Bolt", "section": "mainboard"},
             {"quantity": 4, "card_name": "Murktide Regent", "section": "mainboard"},
@@ -52,9 +52,9 @@ class TestDeckAnalysisWorkflow:
         ]
         mock_db.get_cursor.return_value.__enter__.return_value = mock_cursor
 
-        # Step 1: Parse decklist
-        decklist_text = "4 Lightning Bolt\n4 Murktide Regent"
-        parsed_deck = parse_and_validate_decklist(decklist_text)
+        # Step 1: Parse deck
+        deck_text = "4 Lightning Bolt\n4 Murktide Regent"
+        parsed_deck = get_enriched_deck(deck_text)
         
         assert len(parsed_deck["card_details"]) == 2
         assert parsed_deck["mainboard_count"] == 8
@@ -149,7 +149,7 @@ class TestDeckAnalysisWorkflow:
             {"name": "Counterspell", "oracle_text": "Counter target spell", "section": "mainboard"},
         ]
 
-        strategy = generate_matchup_strategy(
+        strategy = generate_deck_matchup_strategy(
             card_details=deck_cards,
             archetype="Murktide",
             opponent_archetype="Rhinos",
