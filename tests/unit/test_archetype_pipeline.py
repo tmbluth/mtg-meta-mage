@@ -207,7 +207,7 @@ def test_archetype_indexes_exist(db_cursor):
 def pipeline():
     """Create pipeline instance for testing"""
     with patch('src.etl.archetype_pipeline.DatabaseConnection'):
-        with patch.dict('os.environ', {'LLM_MODEL': 'gpt-4o-mini'}):
+        with patch.dict('os.environ', {'LARGE_LANGUAGE_MODEL': 'gpt-4o-mini'}):
             return ArchetypeClassificationPipeline(
                 model_provider='openai',
                 prompt_id='test_v1'

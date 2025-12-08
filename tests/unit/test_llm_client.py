@@ -73,7 +73,7 @@ class TestGetLLMClient:
         'AZURE_OPENAI_API_KEY': 'test-key',
         'AZURE_OPENAI_LLM_ENDPOINT': 'https://{}.openai.azure.com/{}/v1',
         'AZURE_OPENAI_API_VERSION': '2024-02-15-preview',
-        'LLM_MODEL': 'gpt-4'
+        'LARGE_LANGUAGE_MODEL': 'gpt-4'
     })
     def test_azure_openai_with_endpoint_template(self, mock_azure_chat):
         """Test Azure OpenAI with endpoint template"""
@@ -100,7 +100,7 @@ class TestGetLLMClient:
     }, clear=True)
     def test_azure_openai_missing_template_vars(self):
         """Test Azure OpenAI with missing template variables"""
-        with pytest.raises(ValueError, match="LLM_MODEL and AZURE_OPENAI_API_VERSION"):
+        with pytest.raises(ValueError, match="LARGE_LANGUAGE_MODEL and AZURE_OPENAI_API_VERSION"):
             get_llm_client('gpt-4', model_provider='azure_openai')
     
     @patch.dict('os.environ', {}, clear=True)

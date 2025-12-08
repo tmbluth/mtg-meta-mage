@@ -51,12 +51,14 @@
 
 ## 7. Integration and Testing
 - [x] 7.1 Create `src/app/agent_api/main.py` to mount agent routes
-- [ ] 7.2 Review new code generated for the changes above for inconsistencies
-- [ ] 7.3 Update root FastAPI app to include agent router
-- [ ] 7.4 Write integration tests for full conversation flow
-- [ ] 7.5 Write integration tests for workflow interleaving scenarios
-- [ ] 7.6 Write integration tests for blocking dependency enforcement
-- [ ] 7.7 Create Postman collection for agent API endpoints
+- [x] 7.2 Review new code generated for the changes above for inconsistencies
+- [x] 7.3 Update root FastAPI app to include agent router
+- [x] 7.4 Write integration tests for full conversation flow
+- [x] 7.5 Write integration tests for workflow interleaving scenarios
+- [x] 7.6 Write integration tests for blocking dependency enforcement
+- [x] 7.7 Create Postman collection for agent API endpoints
+- [ ] 7.8 Run integration tests and root cause any issues
+- [ ] 7.9 Run Postman tests and root cause any issues
 
 ## 8. Documentation
 - [ ] 8.1 Update README with agent API documentation

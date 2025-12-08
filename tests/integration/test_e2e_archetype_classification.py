@@ -26,8 +26,8 @@ class TestLLMClientAzureOpenAI:
     @pytest.fixture
     def azure_client(self):
         """Create Azure OpenAI LLM client"""
-        model_name = os.getenv('LLM_MODEL')
-        assert model_name, "LLM_MODEL environment variable not set"
+        model_name = os.getenv('LARGE_LANGUAGE_MODEL')
+        assert model_name, "LARGE_LANGUAGE_MODEL environment variable not set"
         
         api_key = os.getenv('AZURE_OPENAI_API_KEY')
         assert api_key, "AZURE_OPENAI_API_KEY environment variable not set"

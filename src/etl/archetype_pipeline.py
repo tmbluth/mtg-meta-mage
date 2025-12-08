@@ -67,9 +67,9 @@ class ArchetypeClassificationPipeline(BasePipeline):
             raise ValueError("model_provider must be one of: azure_openai, anthropic, openai, aws_bedrock")
         
         # Get model name from environment variable
-        self.model_name = os.getenv('LLM_MODEL')
+        self.model_name = os.getenv('LARGE_LANGUAGE_MODEL')
         if not self.model_name:
-            raise ValueError("LLM_MODEL environment variable must be set")
+            raise ValueError("LARGE_LANGUAGE_MODEL environment variable must be set")
         
         self.model_provider = model_provider
         self.prompt_id = prompt_id

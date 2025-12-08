@@ -1,9 +1,12 @@
 """FastMCP server initialization and configuration"""
 
+import os
+
 from fastmcp import FastMCP
 
-# Initialize MCP server
-mcp = FastMCP("mtg-meta-mage", version="0.1.0")
+# Initialize MCP server with name from environment variable
+server_name = os.getenv("MCP_SERVER_NAME")
+mcp = FastMCP(server_name, version="0.1.0")
 
 # Tools will be registered via decorators in individual tool modules
 # Import tools to register them with the server

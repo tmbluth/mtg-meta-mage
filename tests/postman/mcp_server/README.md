@@ -93,7 +93,7 @@ Add to your Claude Desktop MCP configuration:
 ```json
 {
   "mcpServers": {
-    "mtg-meta-mage": {
+    "mtg-meta-mage-mcp": {
       "url": "http://localhost:8000/mcp",
       "transport": "streamable_http"
     }

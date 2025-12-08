@@ -54,7 +54,7 @@ def _get_intent_client():
     if _intent_client is not None:
         return _intent_client
 
-    model = os.getenv("LLM_MODEL")
+    model = os.getenv("LARGE_LANGUAGE_MODEL")
     provider = os.getenv("LLM_PROVIDER")
     try:
         _intent_client = get_llm_client(model, provider)

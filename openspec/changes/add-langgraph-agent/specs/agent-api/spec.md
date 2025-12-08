@@ -250,12 +250,12 @@ The system SHALL use the same LLM configuration for agent reasoning and tool-int
 
 #### Scenario: Agent uses environment LLM configuration
 - **WHEN** agent is initialized
-- **THEN** LLM model is configured from LLM_MODEL environment variable
+- **THEN** LLM model is configured from LARGE_LANGUAGE_MODEL environment variable
 - **AND** LLM provider is configured from LLM_PROVIDER environment variable
 
 #### Scenario: Tool LLM calls use same configuration
 - **WHEN** generate_deck_matchup_strategy, optimize_mainboard, or optimize_sideboard makes internal LLM calls
-- **THEN** those calls use the same LLM_MODEL and LLM_PROVIDER as the agent
+- **THEN** those calls use the same LARGE_LANGUAGE_MODEL and LLM_PROVIDER as the agent
 - **AND** configuration is sourced from environment variables
 
 ### Requirement: Meta-Informed Deck Coaching

@@ -177,7 +177,7 @@ async def chat(request: ChatRequest):
     else:
         convo = conversation_store.create(conversation_id=request.conversation_id, initial_state=create_initial_state())
 
-    state = convo["state"]
+    state = convo["state"].copy()
     state = _apply_context(state, request.context)
     conversation_store.update(convo["conversation_id"], state_updates=state, messages=[{"role": "user", "content": request.message.strip()}])
 

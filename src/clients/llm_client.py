@@ -87,10 +87,10 @@ def get_llm_client(model_name: str, model_provider: str) -> LLMClient:
             raise ValueError("AZURE_OPENAI_API_KEY environment variable must be set")
         
         if endpoint_template:
-            # Construct endpoint from template: LLM_MODEL goes in first {}, azure_openai_api_version in second {}
+            # Construct endpoint from template: LARGE_LANGUAGE_MODEL goes in first {}, azure_openai_api_version in second {}
             if not model_name or not azure_openai_api_version:
                 raise ValueError(
-                    "LLM_MODEL and AZURE_OPENAI_API_VERSION environment variables must be set "
+                    "LARGE_LANGUAGE_MODEL and AZURE_OPENAI_API_VERSION environment variables must be set "
                     "when using AZURE_OPENAI_LLM_ENDPOINT template"
                 )
             endpoint = endpoint_template.format(model_name, azure_openai_api_version)

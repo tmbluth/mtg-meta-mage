@@ -17,8 +17,8 @@ def test_get_welcome_returns_discovery_info(mock_get_cursor, mock_get_tool_catal
     mock_get_cursor.return_value.__enter__.return_value = cursor
     
     mock_get_tool_catalog.return_value = [
-        {"name": "get_format_meta_rankings", "description": "Get format-wide meta rankings", "server": "mtg-meta-mage"},
-        {"name": "get_enriched_deck", "description": "Parse a deck and enrich with card details", "server": "mtg-meta-mage"},
+        {"name": "get_format_meta_rankings", "description": "Get format-wide meta rankings", "server": "mtg-meta-mage-mcp"},
+        {"name": "get_enriched_deck", "description": "Parse a deck and enrich with card details", "server": "mtg-meta-mage-mcp"},
     ]
     
     response = client.get("/welcome")

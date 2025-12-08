@@ -235,7 +235,7 @@ def generate_deck_matchup_strategy(
         from src.clients.llm_client import get_llm_client
         
         # Get model name and provider from environment
-        model_name = os.getenv("LLM_MODEL")
+        model_name = os.getenv("LARGE_LANGUAGE_MODEL")
         model_provider = os.getenv("LLM_PROVIDER")
         
         llm = get_llm_client(model_name, model_provider)
@@ -795,7 +795,7 @@ def optimize_mainboard(
         )
         
         # Call LLM
-        model_name = os.getenv("LLM_MODEL")
+        model_name = os.getenv("LARGE_LANGUAGE_MODEL")
         model_provider = os.getenv("LLM_PROVIDER")
         llm = get_llm_client(model_name, model_provider)
         response = llm.run(prompt)
@@ -927,7 +927,7 @@ def optimize_sideboard(
         )
         
         # Call LLM with retry logic for 15-card validation
-        model_name = os.getenv("LLM_MODEL")
+        model_name = os.getenv("LARGE_LANGUAGE_MODEL")
         model_provider = os.getenv("LLM_PROVIDER")
         llm = get_llm_client(model_name, model_provider)
         

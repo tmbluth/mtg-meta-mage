@@ -117,7 +117,7 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
   - OpenAI: Requires `OPENAI_API_KEY`
   - Anthropic: Requires `ANTHROPIC_API_KEY`
   - AWS Bedrock: Requires AWS credentials and `AWS_REGION`
-  - Model selection: `LLM_MODEL` environment variable (e.g., "gpt-4o-mini", "claude-3-5-sonnet-20241022")
+  - Model selection: `LARGE_LANGUAGE_MODEL` environment variable (e.g., "gpt-4o-mini", "claude-3-5-sonnet-20241022")
   - Provides: Archetype classification for decklists
 - **PostgreSQL Database**:
   - Tables: `tournaments`, `players`, `decklists`, `match_rounds`, `matches`, `load_metadata`, `cards`, `deck_cards`, `archetype_groups`, `archetype_classifications`

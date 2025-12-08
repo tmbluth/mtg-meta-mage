@@ -59,7 +59,7 @@ DB_PASSWORD=your_db_password
 TOPDECK_API_KEY=your_topdeck_api_key
 
 # LLM Configuration (for archetype classification)
-LLM_MODEL=gpt-4o-mini  # Model name/deployment name
+LARGE_LANGUAGE_MODEL=gpt-4o-mini  # Model name/deployment name
 
 # Azure OpenAI (if using Azure)
 AZURE_OPENAI_API_KEY=your_azure_api_key
@@ -190,7 +190,7 @@ confidence: 0.95
 ```
 
 **Reclassification Strategy:**
-- Update `LLM_MODEL` environment variable to use a different model
+- Update `LARGE_LANGUAGE_MODEL` environment variable to use a different model
 - Modify prompt template in `src/etl/prompts/archetype_classification_v{?}.txt` (or create new version)
 - Run `--mode initial` to reclassify existing decks with new model/prompt
 - Historical classifications are preserved in `archetype_classifications` table
