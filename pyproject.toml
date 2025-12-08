@@ -11,6 +11,7 @@ dependencies = [
     "pydantic>=2.5.0",
     "python-Levenshtein>=0.25.0",
     "levenshtein>=0.27.3",
+    "langgraph>=0.2.0",
     "langchain-core>=1.0.6",
     "langchain-openai>=1.0.3",
     "langchain-anthropic>=1.1.0",
@@ -20,6 +21,7 @@ dependencies = [
     "polars>=1.13.0",
     "fastmcp>=0.3.0",
     "langchain-mcp-adapters>=0.1.0",
+    "sse-starlette>=2.0.0",
 ]
 
 [build-system]

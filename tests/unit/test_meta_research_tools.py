@@ -207,3 +207,52 @@ class TestHelperFunctions:
         result = _calculate_matchup_matrix(df)
         assert result == {}
 
+
+class TestGetFormatArchetypes:
+    """Tests for the get_format_archetypes MCP tool."""
+
+    @patch("src.app.mcp.tools.meta_research_tools.DatabaseConnection.get_cursor")
+    def test_returns_sorted_archetypes_with_meta_share(self, mock_get_cursor):
+        """Valid format returns archetypes sorted by meta_share with required schema."""
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [
+            (1, "Deck A", "UR", 10),
+            (2, "Deck B", "BG", 5),
+        ]
+        cursor.description = [
+            ("archetype_group_id",),
+            ("main_title",),
+            ("color_identity",),
+            ("deck_count",),
+        ]
+        mock_get_cursor.return_value.__enter__.return_value = cursor
+
+        result = meta_research_tools.get_format_archetypes.fn(format="Modern", days=30)
+
+        assert result["format"] == "Modern"
+        archetypes = result["archetypes"]
+        assert len(archetypes) == 2
+        assert archetypes[0]["name"] == "Deck A"
+        assert archetypes[0]["meta_share"] == pytest.approx(66.666, rel=1e-2)
+        assert archetypes[0]["color_identity"] == "UR"
+        # Ensure sorted by meta_share descending
+        assert archetypes[0]["meta_share"] >= archetypes[1]["meta_share"]
+
+    @patch("src.app.mcp.tools.meta_research_tools.DatabaseConnection.get_cursor")
+    def test_handles_no_archetype_data(self, mock_get_cursor):
+        """No data returns empty archetypes array and echoes format."""
+        cursor = MagicMock()
+        cursor.fetchall.return_value = []
+        cursor.description = [
+            ("archetype_group_id",),
+            ("main_title",),
+            ("color_identity",),
+            ("deck_count",),
+        ]
+        mock_get_cursor.return_value.__enter__.return_value = cursor
+
+        result = meta_research_tools.get_format_archetypes.fn(format="Legacy", days=30)
+
+        assert result["format"] == "Legacy"
+        assert result["archetypes"] == []
+
