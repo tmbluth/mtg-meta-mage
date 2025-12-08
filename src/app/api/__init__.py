@@ -1,2 +1,2 @@
-# Meta Analytics API
+# Meta Mage Agent API
 
