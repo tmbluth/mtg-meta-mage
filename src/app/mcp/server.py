@@ -2,10 +2,14 @@
 
 import os
 
+from dotenv import load_dotenv
 from fastmcp import FastMCP
 
-# Initialize MCP server with name from environment variable
-server_name = os.getenv("MCP_SERVER_NAME")
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize MCP server with name from environment variable, default to "mtg-meta-mage-mcp"
+server_name = os.getenv("MCP_SERVER_NAME", "mtg-meta-mage-mcp")
 mcp = FastMCP(server_name, version="0.1.0")
 
 # Tools will be registered via decorators in individual tool modules

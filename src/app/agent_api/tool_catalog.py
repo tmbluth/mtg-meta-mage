@@ -19,8 +19,8 @@ async def fetch_tool_catalog() -> List[Dict[str, Any]]:
         return _catalog_cache
 
     # Check for test environment variables first, then fall back to regular ones
-    server_name = os.getenv("TEST_MCP_SERVER_NAME") or os.getenv("MCP_SERVER_NAME", "mtg-meta-mage-mcp")
-    server_port = os.getenv("TEST_MCP_SERVER_PORT") or os.getenv("MCP_SERVER_PORT", "8000")
+    server_name = os.getenv("MCP_SERVER_NAME") or os.getenv("MCP_SERVER_NAME", "mtg-meta-mage-mcp")
+    server_port = os.getenv("MCP_SERVER_PORT") or os.getenv("MCP_SERVER_PORT", "8000")
     
     logger.info(f"Fetching tool catalog: server_name={server_name}, server_port={server_port}")
     
@@ -32,31 +32,31 @@ async def fetch_tool_catalog() -> List[Dict[str, Any]]:
     logger.info(f"Using MCP server URL: {server_url}")
 
     try:
-        client = MultiServerMCPClient(
+        async with MultiServerMCPClient(
             {server_name: {"url": server_url, "transport": "streamable_http"}}
-        )
-        logger.debug(f"Created MCP client for server: {server_name}")
+        ) as client:
+            logger.debug(f"Created MCP client for server: {server_name}")
 
-        tools = await client.get_tools()
-        logger.info(f"Retrieved {len(tools)} tools from MCP server")
+            tools = await client.get_tools()
+            logger.info(f"Retrieved {len(tools)} tools from MCP server")
 
-        catalog: List[Dict[str, Any]] = []
-        for tool in tools:
-            # langchain-mcp-adapters returns BaseTool like objects; access attributes defensively
-            name = getattr(tool, "name", None) or getattr(tool, "tool_name", None)
-            description = getattr(tool, "description", "") or ""
-            catalog.append(
-                {
-                    "name": name,
-                    "description": description,
-                    "server": server_name,
-                }
-            )
-            logger.debug(f"Added tool to catalog: {name}")
+            catalog: List[Dict[str, Any]] = []
+            for tool in tools:
+                # langchain-mcp-adapters returns BaseTool like objects; access attributes defensively
+                name = getattr(tool, "name", None) or getattr(tool, "tool_name", None)
+                description = getattr(tool, "description", "") or ""
+                catalog.append(
+                    {
+                        "name": name,
+                        "description": description,
+                        "server": server_name,
+                    }
+                )
+                logger.debug(f"Added tool to catalog: {name}")
 
-        _catalog_cache = catalog
-        logger.info(f"Tool catalog cached with {len(catalog)} tools")
-        return catalog
+            _catalog_cache = catalog
+            logger.info(f"Tool catalog cached with {len(catalog)} tools")
+            return catalog
     except Exception as e:
         logger.error(f"Error fetching tool catalog from MCP server: {e}", exc_info=True)
         raise

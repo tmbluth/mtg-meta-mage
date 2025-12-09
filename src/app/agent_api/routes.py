@@ -13,6 +13,7 @@ from src.app.mcp.tools.meta_research_tools import get_format_archetypes
 
 from .graph import create_agent_graph
 from .graph import set_tool_catalog
+from .prompts import generate_welcome_message
 from .state import ConversationState, create_initial_state
 from .store import InMemoryConversationStore
 from .streaming import (
@@ -34,11 +35,13 @@ agent_graph = create_agent_graph()
 @router.get("/welcome")
 async def get_welcome():
     """
-    Get welcome information including available formats, workflows, and tools.
+    Create a new conversation session and return welcome information.
     
-    Use this endpoint before starting a conversation to understand system capabilities.
+    This endpoint creates a new conversation, retrieves available tools from the MCP server,
+    generates an LLM-interpreted welcome message, and returns all necessary context for
+    the client to begin a conversation.
     """
-    # Get formats
+    # Get formats from database
     query = """
         SELECT DISTINCT format 
         FROM tournaments 
@@ -51,6 +54,11 @@ async def get_welcome():
     
     # Get tool catalog dynamically from MCP server
     tool_catalog = await get_tool_catalog_safe()
+    if not tool_catalog:
+        raise HTTPException(
+            status_code=503,
+            detail="MCP server tool discovery failed. Ensure the MCP server is running."
+        )
     
     # Define workflows with example queries and tool mappings
     workflow_tool_mappings = {
@@ -90,8 +98,24 @@ async def get_welcome():
             if name in tool_lookup
         ]
     
+    # Generate LLM-interpreted welcome message
+    welcome_message = generate_welcome_message(
+        tool_catalog=tool_catalog,
+        workflows=workflows,
+        available_formats=formats
+    )
+    
+    # Create a new conversation with session context
+    initial_state = create_initial_state()
+    initial_state["tool_catalog"] = tool_catalog
+    initial_state["available_formats"] = formats
+    initial_state["workflows"] = workflows
+    
+    convo = conversation_store.create(initial_state=initial_state)
+    
     return {
-        "message": "Welcome to MTG Meta Mage! Here's what I can help you with:",
+        "conversation_id": convo["conversation_id"],
+        "message": welcome_message,
         "available_formats": formats,
         "workflows": workflows,
         "tool_count": len(tool_catalog)
@@ -173,10 +197,7 @@ async def chat(request: ChatRequest):
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
 
-    tool_catalog = await get_tool_catalog_safe()
-    if tool_catalog:
-        set_tool_catalog(tool_catalog)
-
+    # Load existing conversation or create new one
     if request.conversation_id and conversation_store.exists(request.conversation_id):
         convo = conversation_store.get(request.conversation_id)
     else:
@@ -184,6 +205,17 @@ async def chat(request: ChatRequest):
 
     state = convo["state"].copy()
     state = _apply_context(state, request.context)
+    
+    # Prefer session-stored tool_catalog from /welcome, fall back to fresh fetch
+    tool_catalog = state.get("tool_catalog")
+    if not tool_catalog:
+        tool_catalog = await get_tool_catalog_safe()
+        state["tool_catalog"] = tool_catalog
+    
+    # Set tool catalog for graph's clarification prompts
+    if tool_catalog:
+        set_tool_catalog(tool_catalog)
+    
     conversation_store.update(convo["conversation_id"], state_updates=state, messages=[{"role": "user", "content": request.message.strip()}])
 
     def event_stream():

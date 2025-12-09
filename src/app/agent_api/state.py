@@ -20,6 +20,10 @@ class ConversationState(TypedDict, total=False):
     # Use Annotated with add_messages reducer to properly append messages
     messages: Annotated[list, add_messages]
     current_workflow: Optional[str]
+    # Session context from /welcome
+    tool_catalog: Optional[List[Dict[str, Any]]]
+    available_formats: Optional[List[str]]
+    workflows: Optional[List[Dict[str, Any]]]
 
 
 def create_initial_state() -> ConversationState:
@@ -33,6 +37,9 @@ def create_initial_state() -> ConversationState:
         "matchup_stats": None,
         "messages": [],
         "current_workflow": None,
+        "tool_catalog": None,
+        "available_formats": None,
+        "workflows": None,
     }
 
 

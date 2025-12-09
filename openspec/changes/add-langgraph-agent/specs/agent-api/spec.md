@@ -47,6 +47,32 @@ The system SHALL call MCP tools using `langchain-mcp-adapters` `MultiServerMCPCl
 - **THEN** the agent calls them through the MCP adapter client
 - **AND** handles tool_call events reflecting the adapter invocation status
 
+### Requirement: LLM Interpretation of MCP Data
+The system SHALL process all MCP tool responses through an LLM to generate natural language responses for users, rather than returning raw structured data.
+
+#### Scenario: Interpret MCP tool response for /chat
+- **WHEN** an MCP tool returns structured data (JSON, lists, metrics)
+- **THEN** the LLM receives the tool response along with conversation context
+- **AND** generates a natural language summary/analysis of the data
+- **AND** the user receives conversational text, not raw JSON
+
+#### Scenario: LLM has access to tool catalog for context
+- **WHEN** generating responses after MCP tool calls
+- **THEN** the LLM has access to tool_catalog stored in session state from /welcome
+- **AND** can reference tool capabilities when explaining results or suggesting next steps
+
+#### Scenario: Interpret welcome data for natural language message
+- **WHEN** GET /welcome retrieves tool catalog and formats
+- **THEN** the LLM generates a personalized welcome message
+- **AND** explains available capabilities in conversational tone
+- **AND** suggests example queries users might try
+
+#### Scenario: Handle multiple tool results
+- **WHEN** multiple MCP tools are called in sequence
+- **THEN** the LLM synthesizes all results into a coherent response
+- **AND** maintains narrative flow across tool outputs
+- **AND** references relevant prior results when appropriate
+
 ### Requirement: SSE Streaming Response
 The system SHALL stream responses via Server-Sent Events with distinct event types for metadata, thinking, tool calls, content, state updates, and completion.
 
@@ -119,19 +145,32 @@ The system SHALL enforce blocking dependencies by prompting users for missing re
 - **AND** does NOT use default value without user input
 
 ### Requirement: Chat Endpoint
-The system SHALL provide a POST /chat endpoint that accepts user messages with optional context and returns SSE streamed responses.
+The system SHALL provide a POST /chat endpoint that accepts user messages with optional context and returns SSE streamed responses with LLM-interpreted natural language content.
 
 #### Scenario: Valid chat request
 - **WHEN** POST /chat is called with message "What's the Modern meta?"
 - **AND** context includes format: "Modern", days: 30
 - **THEN** return SSE stream with metadata, tool_call, content, state, done events
 - **AND** return Content-Type: text/event-stream
+- **AND** content events contain LLM-generated natural language responses
+
+#### Scenario: Chat uses welcome info from session
+- **WHEN** POST /chat is called with a conversation_id from /welcome
+- **THEN** the agent has access to tool_catalog, available_formats, workflows from session state
+- **AND** uses this context when generating responses
 
 #### Scenario: Chat request with deck text
 - **WHEN** POST /chat is called with context.deck_text containing deck list
 - **THEN** agent calls get_enriched_deck with provided deck
 - **AND** stores card_details in conversation state
+- **AND** LLM interprets enriched deck data and responds naturally
 - **AND** prompts for archetype selection if not provided
+
+#### Scenario: Chat response is natural language
+- **WHEN** MCP tools return structured data during chat
+- **THEN** the LLM interprets the data
+- **AND** generates conversational response explaining findings
+- **AND** user does not see raw JSON or tool output
 
 #### Scenario: Invalid message (empty)
 - **WHEN** POST /chat is called with empty message
@@ -139,13 +178,20 @@ The system SHALL provide a POST /chat endpoint that accepts user messages with o
 - **AND** include error message in response
 
 ### Requirement: Welcome Discovery Endpoint
-The system SHALL provide a GET /welcome endpoint that dynamically retrieves available tools from the MCP server and presents them with workflows, formats, and example queries before a conversation is started.
+The system SHALL provide a GET /welcome endpoint that creates a new conversation session, retrieves available tools from the MCP server, and returns an LLM-generated natural language welcome message along with structured metadata.
 
-#### Scenario: Get welcome information
+#### Scenario: Get welcome information and create session
 - **WHEN** GET /welcome is called
-- **THEN** return JSON with message, available_formats, workflows, and tool_count
+- **THEN** create a new conversation with unique conversation_id
 - **AND** dynamically fetch tool catalog from MCP server using get_tool_catalog_safe
-- **AND** enrich workflows with tool details including name and description
+- **AND** store tool_catalog, available_formats, and workflows in conversation state
+- **AND** return JSON with conversation_id, message, available_formats, workflows, and tool_count
+
+#### Scenario: Welcome message is LLM-generated
+- **WHEN** GET /welcome succeeds
+- **THEN** the message field contains an LLM-generated natural language welcome
+- **AND** the LLM uses tool_catalog and workflows to craft a contextual introduction
+- **AND** the response explains what the system can help with in conversational tone
 
 #### Scenario: Welcome response includes workflows
 - **WHEN** GET /welcome succeeds
@@ -164,6 +210,14 @@ The system SHALL provide a GET /welcome endpoint that dynamically retrieves avai
 - **THEN** tool_details arrays are empty but workflows are still returned
 - **AND** tool_count is 0
 - **AND** available_formats and workflow structure are still present
+- **AND** conversation is still created with available metadata
+
+#### Scenario: Welcome info persists in session
+- **WHEN** GET /welcome creates a conversation
+- **THEN** tool_catalog is stored in conversation state
+- **AND** available_formats is stored in conversation state
+- **AND** workflows is stored in conversation state
+- **AND** this info is available for all subsequent /chat calls in the session
 
 ### Requirement: Formats Dropdown Endpoint
 The system SHALL provide a GET /formats endpoint that returns available tournament formats for dropdown selection.
@@ -214,6 +268,13 @@ The system SHALL provide a GET /conversations/{conversation_id} endpoint that re
 
 ### Requirement: Conversation State Persistence
 The system SHALL persist conversation state within a session, allowing state to be modified and preserved across turns.
+
+#### Scenario: Persist welcome info from session initialization
+- **WHEN** GET /welcome creates a new conversation
+- **THEN** tool_catalog is stored in conversation state
+- **AND** available_formats is stored in conversation state
+- **AND** workflows is stored in conversation state
+- **AND** this data persists for all subsequent /chat calls
 
 #### Scenario: Persist format selection
 - **WHEN** user selects format via context or message

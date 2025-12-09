@@ -98,7 +98,7 @@ This design introduces a LangGraph-based agent exposed via FastAPI that orchestr
 ### Decision 6: MCP Client via langchain-mcp-adapters
 **Choice**: Use `langchain-mcp-adapters` `MultiServerMCPClient` with `streamable_http` transport to call MCP tools.
 
-**Why**:
+**Why**: 
 - Aligns with LangChain MCP quickstart guidance (MultiServerMCPClient; stateless by default)
 - Matches existing MCP server transport (`streamable_http`)
 - Keeps MCP client logic simple to swap servers or add auth headers later
@@ -106,6 +106,37 @@ This design introduces a LangGraph-based agent exposed via FastAPI that orchestr
 **Notes**:
 - Client is stateless by default; each tool call creates a fresh MCP session. If we need per-conversation reuse, we can adopt the stateful session pattern from the LangChain docs.
 - Dependency already present in `pyproject.toml`; keep version ≥0.1.0 (bump if needed).
+
+### Decision 7: LLM Interpretation of MCP Data
+**Choice**: All MCP tool responses are processed through an LLM to generate natural language responses for users.
+
+**Why**:
+- Raw JSON/structured data from MCP tools is not user-friendly
+- LLM can synthesize multiple data points into coherent narratives
+- Enables contextual responses that consider conversation history
+- Users expect conversational interactions, not API dumps
+
+**Implementation**:
+- After any MCP tool call completes, results are passed to the LLM with conversation context
+- LLM generates natural language summary/analysis of the data
+- Both /welcome and /chat endpoints return LLM-interpreted responses
+- The LLM has access to tool_catalog from welcome info to explain capabilities naturally
+
+### Decision 8: Session Initialization via /welcome
+**Choice**: /welcome endpoint creates a new conversation session and stores welcome context for the entire session.
+
+**Why**:
+- Ensures every session starts with consistent tool/format awareness
+- Welcome info (tool_catalog, available_formats, workflows) is expensive to fetch and doesn't change mid-session
+- Enables LLM to reference available capabilities when routing or explaining options
+- Provides natural onboarding experience for new users
+
+**Flow**:
+1. Client calls GET /welcome when user opens the app
+2. Server creates new conversation, fetches MCP tool catalog, stores in session state
+3. LLM generates personalized welcome message explaining capabilities
+4. Response includes conversation_id for subsequent /chat calls
+5. All /chat calls can reference stored welcome info without re-fetching
 
 ## Architecture
 
@@ -154,6 +185,11 @@ class ConversationState(TypedDict):
     card_details: Optional[list]   # From get_enriched_deck
     matchup_stats: Optional[dict]  # From get_deck_matchup_stats
     
+    # Session context from /welcome
+    tool_catalog: Optional[list]   # MCP tool definitions for LLM context
+    available_formats: Optional[list]  # Available tournament formats
+    workflows: Optional[list]      # Workflow definitions with examples
+    
     # Conversation tracking
     messages: list                 # Chat history
     current_workflow: str          # "meta_research" | "deck_coaching" | None
@@ -176,7 +212,8 @@ class ConversationState(TypedDict):
 ```json
 // Response
 {
-  "message": "Welcome to MTG Meta Mage! Here's what I can help you with:",
+  "conversation_id": "abc123",
+  "message": "Welcome to MTG Meta Mage! I'm your AI-powered Magic: The Gathering coach...",
   "available_formats": ["Modern", "Pioneer", "Legacy", "Vintage", "Standard", "Pauper"],
   "workflows": [
     {
@@ -238,9 +275,18 @@ class ConversationState(TypedDict):
 }
 ```
 
-**Purpose**: Discovery endpoint called before the first conversation to show users what the system can do. Dynamically retrieves tool catalog from MCP server to keep tool descriptions up-to-date.
+**Purpose**: Session initialization endpoint that creates a new conversation and returns an LLM-generated welcome message. Dynamically retrieves tool catalog from MCP server and stores it in session state for use throughout the conversation.
 
-**Flow**: User calls GET /welcome → sees available formats, workflows with examples, and tool capabilities → selects format → starts chat with POST /chat.
+**Flow**: 
+1. Client calls GET /welcome when user opens the app
+2. Server creates new conversation with unique ID
+3. Server fetches MCP tool catalog and available formats
+4. Server stores tool_catalog, available_formats, and workflows in conversation state
+5. LLM generates personalized welcome message explaining capabilities in natural language
+6. Response includes conversation_id for subsequent /chat calls
+7. All subsequent /chat calls can reference stored welcome info without re-fetching
+
+**Note**: The `message` field contains an LLM-interpreted natural language welcome, not static text. The LLM uses the tool_catalog and workflows to craft a contextual introduction.
 
 ### POST /chat
 ```json

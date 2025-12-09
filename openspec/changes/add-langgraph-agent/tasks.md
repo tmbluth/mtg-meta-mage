@@ -49,20 +49,39 @@
 - [x] 6.8 Implement done event emission
 - [x] 6.9 Make SSE formatting tests pass
 
-## 7. Integration and Testing
-- [x] 7.1 Create `src/app/agent_api/main.py` to mount agent routes
-- [x] 7.2 Review new code generated for the changes above for inconsistencies
-- [x] 7.3 Update root FastAPI app to include agent router
-- [x] 7.4 Write integration tests for full conversation flow
-- [x] 7.5 Write integration tests for workflow interleaving scenarios
-- [x] 7.6 Write integration tests for blocking dependency enforcement
-- [x] 7.7 Create Postman collection for agent API endpoints working together. Root cause any issues
-- [ ] 7.8 Run agent integration tests and root cause any issues
-- [ ] 7.9 Run Postman agent collection and root cause any issues
+## 7. LLM Interpretation Layer
+- [x] 7.1 Write unit tests for LLM interpretation of MCP tool responses
+- [x] 7.2 Create response interpretation prompts in `src/app/agent_api/prompts.py`
+- [x] 7.3 Implement LLM interpretation node in graph.py that processes tool results
+- [x] 7.4 Update /chat to pass tool results through LLM for natural language response
+- [x] 7.5 Write unit tests for LLM-generated welcome message
+- [x] 7.6 Update /welcome to generate LLM-interpreted welcome message
+- [x] 7.7 Ensure LLM has access to tool_catalog when generating responses
 
-## 8. Documentation
-- [ ] 8.1 Update README with agent API documentation
-- [ ] 8.2 Add API endpoint examples to README
-- [ ] 8.3 Document environment variables for LLM configuration (already in README)
-- [ ] 8.4 Verify alignment between specs, code, and tests
+## 8. Session Initialization via /welcome
+- [x] 8.1 Write unit tests for /welcome session creation
+- [x] 8.2 Update /welcome to create new conversation and return conversation_id
+- [x] 8.3 Store tool_catalog, available_formats, workflows in conversation state
+- [x] 8.4 Write unit tests for /chat accessing welcome info from session
+- [x] 8.5 Update /chat to use session-stored tool_catalog for LLM context
+- [x] 8.6 Update state.py with available_formats and workflows fields
+
+## 9. Integration and Testing
+- [x] 9.1 Create `src/app/agent_api/main.py` to mount agent routes
+- [x] 9.2 Review new code generated for the changes above for inconsistencies
+- [x] 9.3 Update root FastAPI app to include agent router
+- [x] 9.4 Write integration tests for full conversation flow with LLM interpretation
+- [x] 9.5 Write integration tests for /welcome session initialization
+- [x] 9.6 Write integration tests for /chat using welcome info from session
+- [x] 9.7 Write integration tests for workflow interleaving scenarios
+- [x] 9.8 Write integration tests for blocking dependency enforcement
+- [x] 9.9 Update Postman collection with /welcome → /chat flow
+- [ ] 9.10 Run agent integration tests and root cause any issues
+- [ ] 9.11 Run Postman agent collection and root cause any issues
+
+## 10. Documentation
+- [ ] 10.1 Update README with agent API documentation
+- [ ] 10.2 Add API endpoint examples to README showing /welcome → /chat flow
+- [ ] 10.3 Document environment variables for LLM configuration (already in README)
+- [ ] 10.4 Verify alignment between specs, code, and tests
 

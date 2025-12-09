@@ -3,12 +3,13 @@
 import json
 import logging
 import os
-from typing import Literal
+from typing import Any, Dict, List, Literal, Optional
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from src.clients.llm_client import get_llm_client
+from .prompts import generate_agent_response
 from .state import ConversationState
 
 logger = logging.getLogger(__name__)
@@ -170,6 +171,63 @@ def update_workflow(state: ConversationState, intent: WorkflowIntent) -> Convers
     """Set current_workflow while preserving existing state."""
     state["current_workflow"] = intent
     return state
+
+
+def generate_response(
+    state: ConversationState,
+    user_message: str,
+    tool_results: List[Dict[str, Any]],
+) -> str:
+    """
+    Generate a natural language response using the LLM.
+    
+    This is the single entry point for response generation, handling
+    0, 1, or many tool results in a unified way.
+    
+    Args:
+        state: Current conversation state (contains format, days, archetype, tool_catalog, messages)
+        user_message: The user's latest message
+        tool_results: List of dicts with 'tool_name' and 'response' keys (can be empty)
+        
+    Returns:
+        Natural language response to the user
+    """
+    # Build conversation context from state
+    conversation_context = {
+        "format": state.get("format"),
+        "days": state.get("days"),
+        "archetype": state.get("archetype"),
+    }
+    
+    # Get conversation history from state
+    messages = state.get("messages", [])
+    conversation_history = []
+    for msg in messages:
+        if hasattr(msg, "content"):
+            # LangChain message object
+            role = getattr(msg, "type", "unknown")
+            if role == "human":
+                role = "user"
+            elif role == "ai":
+                role = "assistant"
+            conversation_history.append({"role": role, "content": msg.content})
+        else:
+            # Dict message
+            conversation_history.append({
+                "role": msg.get("role", "unknown"),
+                "content": msg.get("content", "")
+            })
+    
+    # Get tool_catalog from state (stored from /welcome session)
+    tool_catalog = state.get("tool_catalog")
+    
+    return generate_agent_response(
+        user_message=user_message,
+        conversation_history=conversation_history,
+        tool_results=tool_results,
+        conversation_context=conversation_context,
+        tool_catalog=tool_catalog,
+    )
 
 
 def _router_node(state: ConversationState) -> dict:
