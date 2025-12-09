@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+import logging
+
 from src.etl.database.connection import DatabaseConnection
 from src.app.mcp.tools.meta_research_tools import get_format_archetypes
 
@@ -21,6 +23,8 @@ from .streaming import (
     thinking_event,
 )
 from .tool_catalog import get_tool_catalog_safe
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 conversation_store = InMemoryConversationStore()
@@ -145,7 +149,8 @@ async def get_conversation(conversation_id: str):
             "format": convo["state"].get("format"),
             "archetype": convo["state"].get("archetype"),
             "days": convo["state"].get("days"),
-            "has_deck": bool(convo["state"].get("card_details")),
+            # has_deck is true if user provided deck_text OR we have enriched card_details
+            "has_deck": bool(convo["state"].get("deck_text") or convo["state"].get("card_details")),
         },
         "messages": convo["state"].get("messages", []),
     }
@@ -185,13 +190,53 @@ async def chat(request: ChatRequest):
         current = conversation_store.get(convo["conversation_id"])["state"]
         yield metadata_event(convo["conversation_id"], current, tool_catalog=tool_catalog)
         yield thinking_event("Routing your request...")
-        updated_state = agent_graph.invoke(
-            current, config={"configurable": {"thread_id": convo["conversation_id"]}}
-        )
-        conversation_store.update(convo["conversation_id"], state_updates=updated_state)
-        yield content_event(updated_state["messages"][-1]["content"])
-        yield state_event(updated_state)
-        yield done_event()
+        try:
+            config = {"configurable": {"thread_id": convo["conversation_id"]}}
+            updated_state = agent_graph.invoke(current, config=config)
+            
+            # Merge updated state back into conversation store
+            conversation_store.update(convo["conversation_id"], state_updates=updated_state)
+            
+            # Get the last message - should be assistant response
+            # LangGraph with add_messages reducer returns LangChain message objects
+            messages = updated_state.get("messages", [])
+            if messages:
+                last_message = messages[-1]
+                # Handle both LangChain message objects and dicts
+                if hasattr(last_message, "content"):
+                    # LangChain message object (AIMessage, HumanMessage, etc.)
+                    msg_type = getattr(last_message, "type", "")
+                    if msg_type == "ai":
+                        yield content_event(last_message.content)
+                    else:
+                        # Look for most recent AI message
+                        ai_messages = [m for m in messages if getattr(m, "type", None) == "ai"]
+                        if ai_messages:
+                            yield content_event(ai_messages[-1].content)
+                        else:
+                            logger.warning(f"No AI message found. Last message type: {msg_type}")
+                            yield content_event("I'm processing your request. Please wait...")
+                elif last_message.get("role") == "assistant":
+                    yield content_event(last_message["content"])
+                else:
+                    # Last message is user - look for most recent assistant message
+                    assistant_messages = [m for m in messages if m.get("role") == "assistant"]
+                    if assistant_messages:
+                        yield content_event(assistant_messages[-1]["content"])
+                    else:
+                        logger.warning(f"No assistant message found. Last message: {last_message}")
+                        yield content_event("I'm processing your request. Please wait...")
+            else:
+                logger.warning("No messages found in graph response")
+                yield content_event("I'm processing your request. Please wait...")
+        except Exception as e:
+            logger.error(f"Error in agent graph: {e}", exc_info=True)
+            yield content_event(f"I encountered an error processing your request. Please try again.")
+        finally:
+            # Always send state and done events
+            final_state = conversation_store.get(convo["conversation_id"])["state"]
+            yield state_event(final_state)
+            yield done_event()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

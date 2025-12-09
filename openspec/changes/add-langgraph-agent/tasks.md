@@ -56,13 +56,13 @@
 - [x] 7.4 Write integration tests for full conversation flow
 - [x] 7.5 Write integration tests for workflow interleaving scenarios
 - [x] 7.6 Write integration tests for blocking dependency enforcement
-- [x] 7.7 Create Postman collection for agent API endpoints
-- [x] 7.8 Run unit tests and root cause any issues (17/17 passing)
-- [x] 7.9 Run MCP server integration tests (18/18 passing)
+- [x] 7.7 Create Postman collection for agent API endpoints working together. Root cause any issues
+- [ ] 7.8 Run agent integration tests and root cause any issues
+- [ ] 7.9 Run Postman agent collection and root cause any issues
 
 ## 8. Documentation
-- [x] 8.1 Update README with agent API documentation
-- [x] 8.2 Add API endpoint examples to README
-- [x] 8.3 Document environment variables for LLM configuration (already in README)
-- [x] 8.4 Verify alignment between specs, code, and tests
+- [ ] 8.1 Update README with agent API documentation
+- [ ] 8.2 Add API endpoint examples to README
+- [ ] 8.3 Document environment variables for LLM configuration (already in README)
+- [ ] 8.4 Verify alignment between specs, code, and tests
 

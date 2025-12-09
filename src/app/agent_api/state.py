@@ -1,6 +1,8 @@
 """Conversation state schema for the agent API."""
 
-from typing import Any, Dict, List, Literal, Optional, TypedDict
+from typing import Annotated, Any, Dict, List, Literal, Optional, TypedDict
+
+from langgraph.graph.message import add_messages
 
 
 class ConversationMessage(TypedDict):
@@ -15,7 +17,8 @@ class ConversationState(TypedDict, total=False):
     deck_text: Optional[str]
     card_details: Optional[list]
     matchup_stats: Optional[dict]
-    messages: List[ConversationMessage]
+    # Use Annotated with add_messages reducer to properly append messages
+    messages: Annotated[list, add_messages]
     current_workflow: Optional[str]
 
 
@@ -36,7 +39,8 @@ def create_initial_state() -> ConversationState:
 def summarize_state_for_ui(state: ConversationState) -> Dict[str, Any]:
     """Return a slim snapshot for SSE state events."""
     return {
-        "has_deck": bool(state.get("card_details")),
+        # has_deck is true if user provided deck_text OR we have enriched card_details
+        "has_deck": bool(state.get("deck_text") or state.get("card_details")),
         "format": state.get("format"),
         "archetype": state.get("archetype"),
         "days": state.get("days"),

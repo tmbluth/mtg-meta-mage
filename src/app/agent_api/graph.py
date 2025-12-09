@@ -108,11 +108,27 @@ def _clarify_message() -> str:
     return "\n".join(lines)
 
 
+def _get_message_content(msg) -> tuple[str, str]:
+    """Extract role and content from a message (dict or LangChain message object)."""
+    if hasattr(msg, "content"):
+        # LangChain message object (HumanMessage, AIMessage, etc.)
+        role = getattr(msg, "type", "unknown")
+        if role == "human":
+            role = "user"
+        elif role == "ai":
+            role = "assistant"
+        return role, msg.content
+    else:
+        # Dict message
+        return msg.get("role", "unknown"), msg.get("content", "")
+
+
 def classify_intent(message: str, state: ConversationState) -> WorkflowIntent:
     """Classify intent via LLM; fall back to meta_research on errors."""
     recent_messages = state.get("messages", [])[-3:]
+    # Handle both dict messages and LangChain message objects
     formatted_history = "\n".join(
-        f"{m.get('role')}: {m.get('content')}" for m in recent_messages
+        f"{_get_message_content(m)[0]}: {_get_message_content(m)[1]}" for m in recent_messages
     ) or "(none)"
     prompt = INTENT_PROMPT_TEMPLATE.format(
         format=state.get("format"),
@@ -156,35 +172,48 @@ def update_workflow(state: ConversationState, intent: WorkflowIntent) -> Convers
     return state
 
 
-def _router_node(state: ConversationState) -> ConversationState:
-    """Route to appropriate subgraph based on intent."""
-    state.setdefault("messages", [])
+def _router_node(state: ConversationState) -> dict:
+    """Route to appropriate subgraph based on intent.
+    
+    Returns a dict of state updates. With add_messages reducer, 
+    returning {"messages": [new_msg]} will append to existing messages.
+    """
+    messages = state.get("messages", [])
     last_message = ""
-    if state.get("messages"):
-        last_message = state["messages"][-1]["content"]
+    if messages:
+        # Handle both dict messages and LangChain message objects
+        last_msg = messages[-1]
+        if hasattr(last_msg, "content"):
+            last_message = last_msg.content
+        else:
+            last_message = last_msg.get("content", "")
+    
     intent = classify_intent(last_message, state)
+    
     if intent == "unknown":
-        state["messages"].append(
-            {
-                "role": "assistant",
-                "content": _clarify_message(),
-            }
-        )
-        return state
-    state = update_workflow(state, intent)
+        # Return only the updates - add_messages reducer will append
+        return {
+            "messages": [{"role": "assistant", "content": _clarify_message()}]
+        }
+    
+    # Update workflow intent
+    updates = {"current_workflow": intent}
+    
     allowed, reason = enforce_blocking(state, intent)
     if not allowed:
         # Record a gentle assistant message explaining the block
-        state["messages"].append({"role": "assistant", "content": reason})
-        return state
+        updates["messages"] = [{"role": "assistant", "content": reason}]
+        return updates
+    
     # In a full implementation, we would branch into tool-calling nodes
-    state["messages"].append({"role": "assistant", "content": f"Routed to {intent} workflow."})
-    return state
+    updates["messages"] = [{"role": "assistant", "content": f"Routed to {intent} workflow."}]
+    return updates
 
 
 def create_agent_graph() -> StateGraph:
     """Create a simple StateGraph with routing and checkpointing."""
-    graph = StateGraph(dict)
+    # Use ConversationState type which has Annotated messages field with add_messages reducer
+    graph = StateGraph(ConversationState)
     graph.add_node("router", _router_node)
     graph.set_entry_point("router")
     graph.add_edge("router", END)
