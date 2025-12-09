@@ -146,7 +146,7 @@ def get_llm_client(model_name: str, model_provider: str) -> LLMClient:
     # Create client with the model
     client = LLMClient(
         model=model,
-        system_instruction="You are an expert Magic: The Gathering deck analyst. Classify decklists into archetypes based on card synergies and strategies."
+        system_instruction="You are an expert Magic: The Gathering deck analyst. Classify decks into archetypes based on card synergies and strategies."
     )
     
     return client

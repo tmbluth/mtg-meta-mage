@@ -258,6 +258,12 @@ def main():
         help='Type of data to load: tournaments (TopDeck), cards (Scryfall), archetypes (LLM classification), or all (runs all pipelines in order)'
     )
     parser.add_argument(
+        '--database',
+        type=str,
+        default=None,
+        help='Database name to use. If not specified, uses DB_NAME from environment variables (defaults to mtg-meta-mage-db for production).'
+    )
+    parser.add_argument(
         '--mode',
         choices=['initial', 'incremental'],
         default='incremental',
@@ -296,7 +302,8 @@ def main():
         parser.error(str(e))
     
     try:
-        DatabaseConnection.initialize_pool()
+        # Initialize pool with specified database or use environment variable
+        DatabaseConnection.initialize_pool(database=args.database)
         
         result = None
 

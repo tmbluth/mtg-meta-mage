@@ -55,8 +55,9 @@ def get_enriched_deck(deck: str) -> dict:
     """
     
     with DatabaseConnection.get_cursor() as cursor:
-        # Normalize card names for lookup
-        normalized_names = [normalize_card_name(name) for name in card_names]
+        # Normalize card names for lookup and lowercase for SQL comparison
+        # SQL uses LOWER(name) so we need to lowercase normalized names for matching
+        normalized_names = [normalize_card_name(name).lower() for name in card_names]
         cursor.execute(query, (normalized_names,))
         db_cards = cursor.fetchall()
     

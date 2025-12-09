@@ -18,6 +18,7 @@ class DatabaseConnection:
     """Manages PostgreSQL database connections with connection pooling"""
     
     _connection_pool: Optional[pool.ThreadedConnectionPool] = None
+    _current_database: Optional[str] = None
     
     @classmethod
     def _get_connection_params(cls, database: Optional[str] = None) -> dict:
@@ -37,13 +38,29 @@ class DatabaseConnection:
         }
     
     @classmethod
-    def initialize_pool(cls, min_conn: int = 1, max_conn: int = 10) -> None:
-        """Initialize the connection pool"""
-        if cls._connection_pool is not None:
-            logger.warning("Connection pool already initialized")
-            return
+    def initialize_pool(cls, database: Optional[str] = None, min_conn: int = 1, max_conn: int = 10) -> None:
+        """
+        Initialize the connection pool
         
-        params = cls._get_connection_params()
+        Args:
+            database: Optional database name. If None, uses DB_NAME from environment.
+                     If specified and different from current pool, closes existing pool and creates new one.
+            min_conn: Minimum number of connections in pool
+            max_conn: Maximum number of connections in pool
+        """
+        # Determine target database
+        target_database = database or os.getenv('DB_NAME')
+        
+        # If pool exists and database matches, no need to reinitialize
+        if cls._connection_pool is not None:
+            if cls._current_database == target_database:
+                logger.debug(f"Connection pool already initialized for database '{target_database}'")
+                return
+            else:
+                logger.info(f"Reinitializing connection pool: '{cls._current_database}' -> '{target_database}'")
+                cls.close_pool()
+        
+        params = cls._get_connection_params(database=database)
         
         # Validate required parameters
         required_params = ['database', 'user', 'password']
@@ -57,7 +74,8 @@ class DatabaseConnection:
                 max_conn,
                 **params
             )
-            logger.info(f"Database connection pool initialized ({min_conn}-{max_conn} connections)")
+            cls._current_database = target_database
+            logger.info(f"Database connection pool initialized for '{target_database}' ({min_conn}-{max_conn} connections)")
         except Exception as e:
             logger.error(f"Failed to initialize connection pool: {e}")
             raise
@@ -162,6 +180,7 @@ class DatabaseConnection:
         if cls._connection_pool is not None:
             cls._connection_pool.closeall()
             cls._connection_pool = None
+            cls._current_database = None
             logger.info("Connection pool closed")
     
     @classmethod

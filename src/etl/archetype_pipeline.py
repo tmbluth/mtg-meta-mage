@@ -281,7 +281,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
         # Validate with Pydantic
         return ArchetypeClassificationResponse(**response_data)
     
-    def classify_decklist_llm(
+    def classify_deck_llm(
         self,
         cards: List[Dict[str, Any]],
         format_name: str,
@@ -398,7 +398,7 @@ class ArchetypeClassificationPipeline(BasePipeline):
             )
         
         # Call LLM classification with error handling
-        classification = self.classify_decklist_llm(
+        classification = self.classify_deck_llm(
             cards=mainboard_cards,
             format_name=format_name,
         )

@@ -1,21 +1,21 @@
 # Project Context
 
 ## Purpose
-MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists against the competitive meta. The system collects tournament data from TopDeck.gg API, stores it in PostgreSQL, and provides insights via LLM analysis. 
+MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decks against the competitive meta. The system collects tournament data from TopDeck.gg API, stores it in PostgreSQL, and provides insights via LLM analysis. 
 
 **Current Features Implemented:**
 - Card data collection from Scryfall API
 - Tournament data collection from TopDeck.gg API
-- LLM-powered archetype classification for decklists
+- LLM-powered archetype classification for decks
 - Initial and incremental ETL pipelines for cards, tournaments, and archetypes
 - Meta analytics REST API with archetype rankings and matchup matrix
 
 **Future Features:**
-- Get decklist analysis 
+- Get deck analysis 
   - Submit deck and select meta time window
   - Strongest/weakest cards against top tier decks
   - Deck piloting guide for selected meta
-- Update decklist
+- Update deck
   - Submit deck and select meta time window
   - Update maindeck flex spots for selected meta
   - Update sideboard for the selected meta
@@ -82,13 +82,13 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
 
 ## Domain Context
 - **Magic: The Gathering Formats**: The system focuses on constructed formats (Standard, Modern, Legacy, Vintage, Pioneer, Pauper)
-- **Tournament Structure**: Tournaments have rounds, matches, players, and decklists
+- **Tournament Structure**: Tournaments have rounds, matches, players, and decks
 - **Match Types**: Only 1v1 matches are stored (excludes multiplayer pods)
 - **Excluded Formats**:
   - Commander formats: EDH, Pauper EDH, Duel Commander, Tiny Leaders, EDH Draft, Oathbreaker
   - Limited formats: Draft, Sealed, Limited, Booster Draft, Sealed Deck, Cube Draft, Team Draft, Team Sealed
 - **Data Sources**: 
-  - TopDeck.gg API provides tournament data, player standings, decklists, and match results
+  - TopDeck.gg API provides tournament data, player standings, decks, and match results
   - Scryfall API provides card data, prices, and rulings
   - LLM APIs (Azure OpenAI, OpenAI, Anthropic, AWS Bedrock) provide archetype classification
 
@@ -106,7 +106,7 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
   - Endpoint: `https://topdeck.gg/api`
   - Authentication: API key via `TOPDECK_API_KEY` environment variable
   - Rate Limit: 200 requests/minute
-  - Provides: Tournament data, player standings, decklists, match rounds
+  - Provides: Tournament data, player standings, decks, match rounds
 - **Scryfall API**:
   - Endpoint: `https://api.scryfall.com`
   - No authentication required
@@ -118,7 +118,7 @@ MTG Meta Mage is an AI-powered tool for analyzing Magic: The Gathering decklists
   - Anthropic: Requires `ANTHROPIC_API_KEY`
   - AWS Bedrock: Requires AWS credentials and `AWS_REGION`
   - Model selection: `LARGE_LANGUAGE_MODEL` environment variable (e.g., "gpt-4o-mini", "claude-3-5-sonnet-20241022")
-  - Provides: Archetype classification for decklists
+  - Provides: Archetype classification for decks
 - **PostgreSQL Database**:
   - Tables: `tournaments`, `players`, `decklists`, `match_rounds`, `matches`, `load_metadata`, `cards`, `deck_cards`, `archetype_groups`, `archetype_classifications`
   - Connection pooling: 1-10 connections (configurable)
