@@ -80,8 +80,8 @@
 - [x] 9.11 Run Postman agent collection and root cause any issues
 
 ## 10. Documentation
-- [ ] 10.1 Update README with agent API documentation
-- [ ] 10.2 Add API endpoint examples to README showing /welcome → /chat flow
-- [ ] 10.3 Document environment variables for LLM configuration (already in README)
-- [ ] 10.4 Verify alignment between specs, code, and tests
+- [x] 10.1 Update README with agent API documentation
+- [x] 10.2 Add API endpoint examples to README showing /welcome → /chat flow
+- [x] 10.3 Document environment variables for LLM configuration (already in README)
+- [x] 10.4 Verify alignment between specs, code, and tests
 

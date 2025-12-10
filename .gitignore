@@ -20,4 +20,4 @@ env/
 
 src/data/
 
-src/database/nuke_and_restart.sh
+src/etl/database/nuke_and_restart.sh
