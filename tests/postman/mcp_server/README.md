@@ -48,12 +48,14 @@ You can modify these in the collection variables or create a Postman environment
 Before using the collection, start the MCP server:
 
 ```bash
-# Start the FastMCP server
-fastmcp run src/app/mcp/server.py --port 8000
+# Start the MCP server (uses proper module imports for tool registration)
+uv run python src/app/mcp/run_server.py --port 8000
 
 # Or if using the FastAPI app (which includes MCP tools):
 uvicorn src.app.api.main:app --reload --port 8080
 ```
+
+> **Note**: Use `run_server.py` instead of `fastmcp run server.py` to ensure tools are properly registered. The `fastmcp run` command creates a separate MCP instance that doesn't have the tools registered via decorators.
 
 ## Architecture
 
@@ -132,7 +134,7 @@ result = await client.call_tool(
 
 1. **Start the MCP Server**:
    ```bash
-   uv run fastmcp run src/app/mcp/server.py --transport http --port 8000
+   uv run python src/app/mcp/run_server.py --port 8000
    ```
 
 2. **Start the FastAPI Server**:

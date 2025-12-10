@@ -76,8 +76,8 @@
 - [x] 9.7 Write integration tests for workflow interleaving scenarios
 - [x] 9.8 Write integration tests for blocking dependency enforcement
 - [x] 9.9 Update Postman collection with /welcome → /chat flow
-- [ ] 9.10 Run agent integration tests and root cause any issues
-- [ ] 9.11 Run Postman agent collection and root cause any issues
+- [x] 9.10 Run agent integration tests and root cause any issues
+- [x] 9.11 Run Postman agent collection and root cause any issues
 
 ## 10. Documentation
 - [ ] 10.1 Update README with agent API documentation

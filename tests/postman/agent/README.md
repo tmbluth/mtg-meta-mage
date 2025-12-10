@@ -5,7 +5,7 @@ This Postman collection provides examples and tests for the MTG Meta Mage Agent 
 ## Setup
 
 1. Import the collection into Postman
-2. Set the `base_url` collection variable to your server URL (default: `http://localhost:8000`)
+2. Set the `base_url` collection variable to your server URL (default: `http://localhost:8001`)
 3. Set the `format` variable to your preferred format (default: `Modern`)
 
 ## Collection Structure

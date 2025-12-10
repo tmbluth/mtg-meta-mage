@@ -404,6 +404,10 @@ Only add complexity with:
 - Prefer verb-led prefixes: `add-`, `update-`, `remove-`, `refactor-`
 - Ensure uniqueness; if taken, append `-2`, `-3`, etc.
 
+### Testing
+- If you write any application functionality lead with test driven development
+- Do not insert skip logic if tests arent working. Find the root cause and try to fix in source code. 
+
 ## Tool Selection Guide
 
 | Task | Tool | Why |
