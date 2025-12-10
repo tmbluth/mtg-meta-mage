@@ -64,7 +64,7 @@ MTG Meta Mage has tournament data, card data, archetype classifications, and met
 - Duplicate clients: Violates DRY, maintenance burden
 
 ### Decision 5: MCP Tool Structure
-**What:** Separate tool modules for distinct concerns: `meta_research_tools` (format-wide queries) and `deck_coaching_tools` (deck-specific analysis with operations: `parse_and_validate_decklist`, `get_deck_matchup_stats`, `generate_matchup_strategy`).
+**What:** Separate tool modules for distinct concerns: `meta_research_tools` (format-wide queries) and `deck_coaching_tools` (deck-specific analysis with operations: `parse_and_validate_decklist`, `get_deck_matchup_stats`, `generate_deck_matchup_strategy`).
 **Why:** Groups related functionality logically. MCP server advertises capabilities that clients can discover and compose.
 **Alternatives:**
 - Separate tools per function: More granular but chattier MCP protocol
@@ -99,7 +99,7 @@ MTG Meta Mage has tournament data, card data, archetype classifications, and met
 │  tools/deck_coaching_tools.py (@mcp.tool):                       │
 │    ├─ parse_and_validate_decklist(decklist) → enriched cards    │
 │    ├─ get_deck_matchup_stats(archetype, format) → matchup data  │
-│    └─ generate_matchup_strategy(deck, matchups) → LLM coaching  │
+│    └─ generate_deck_matchup_strategy(deck, matchups) → LLM coaching  │
 │                                                                   │
 │  prompts/coaching_prompt.py → LLM prompt template                │
 └───────────────────────────┬─────────────────────────────────────┘

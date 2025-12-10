@@ -1,0 +1,560 @@
+{
+  "info": {
+    "name": "MTG Meta Mage - Agent API",
+    "description": "Postman collection for testing the MTG Meta Mage Agent API endpoints. The Agent API provides a conversational interface for meta research and deck coaching workflows.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8001",
+      "type": "string",
+      "description": "Base URL for Agent API server (port 8001)"
+    },
+    {
+      "key": "conversation_id",
+      "value": "",
+      "type": "string",
+      "description": "Conversation ID for continuing conversations (auto-set from responses)"
+    },
+    {
+      "key": "format",
+      "value": "Modern",
+      "type": "string",
+      "description": "Tournament format to query"
+    }
+  ],
+  "item": [
+    {
+      "name": "Discovery Endpoints",
+      "item": [
+        {
+          "name": "GET /welcome",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has required fields\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('conversation_id');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData).to.have.property('available_formats');",
+                  "    pm.expect(jsonData).to.have.property('workflows');",
+                  "    pm.expect(jsonData).to.have.property('tool_count');",
+                  "    pm.expect(jsonData.available_formats).to.be.an('array');",
+                  "    pm.expect(jsonData.workflows).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Store conversation_id for use in subsequent requests",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.conversation_id) {",
+                  "    pm.collectionVariables.set('conversation_id', jsonData.conversation_id);",
+                  "    console.log('Set conversation_id from /welcome:', jsonData.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/welcome",
+              "host": ["{{base_url}}"],
+              "path": ["welcome"]
+            },
+            "description": "Get welcome information including available formats, workflows, and tools. Use this endpoint before starting a conversation to understand system capabilities."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /formats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has formats array\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('formats');",
+                  "    pm.expect(jsonData.formats).to.be.an('array');",
+                  "    pm.expect(jsonData.formats.length).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/formats",
+              "host": ["{{base_url}}"],
+              "path": ["formats"]
+            },
+            "description": "Get list of available formats derived from tournaments table."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /archetypes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has required fields\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('format');",
+                  "    pm.expect(jsonData).to.have.property('archetypes');",
+                  "    pm.expect(jsonData.archetypes).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/archetypes?format={{format}}",
+              "host": ["{{base_url}}"],
+              "path": ["archetypes"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "{{format}}"
+                }
+              ]
+            },
+            "description": "Get archetypes for a specific format."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for discovering available formats, archetypes, and system capabilities."
+    },
+    {
+      "name": "Conversation Endpoints",
+      "item": [
+        {
+          "name": "POST /chat - New Conversation (Meta Research)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is SSE stream\", function () {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});",
+                  "",
+                  "// Extract conversation_id from SSE metadata event",
+                  "const responseText = pm.response.text();",
+                  "const metadataMatch = responseText.match(/event: metadata\\ndata: ({[^}]+})/);",
+                  "if (metadataMatch) {",
+                  "    const metadata = JSON.parse(metadataMatch[1]);",
+                  "    if (metadata.conversation_id) {",
+                  "        pm.collectionVariables.set('conversation_id', metadata.conversation_id);",
+                  "        console.log('Set conversation_id:', metadata.conversation_id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What are the top decks in Modern?\",\n  \"conversation_id\": null,\n  \"context\": {\n    \"format\": \"Modern\",\n    \"days\": 30\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/chat",
+              "host": ["{{base_url}}"],
+              "path": ["chat"]
+            },
+            "description": "Start a new conversation with a meta research query. Returns SSE stream with metadata, content, state, and done events."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /chat - Continue Conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is SSE stream\", function () {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What about Pioneer?\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"context\": {\n    \"format\": \"Pioneer\",\n    \"days\": 30\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/chat",
+              "host": ["{{base_url}}"],
+              "path": ["chat"]
+            },
+            "description": "Continue an existing conversation. Uses conversation_id from previous response."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /chat - Deck Coaching",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is SSE stream\", function () {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                  "});",
+                  "",
+                  "// Extract conversation_id if new conversation",
+                  "const responseText = pm.response.text();",
+                  "const metadataMatch = responseText.match(/event: metadata\\ndata: ({[^}]+})/);",
+                  "if (metadataMatch) {",
+                  "    const metadata = JSON.parse(metadataMatch[1]);",
+                  "    if (metadata.conversation_id && !pm.collectionVariables.get('conversation_id')) {",
+                  "        pm.collectionVariables.set('conversation_id', metadata.conversation_id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"How should I optimize this deck?\",\n  \"conversation_id\": null,\n  \"context\": {\n    \"format\": \"Modern\",\n    \"archetype\": \"Murktide\",\n    \"deck_text\": \"4 Lightning Bolt\\n4 Ragavan, Nimble Pilferer\\n4 Dragon's Rage Channeler\\n4 Murktide Regent\\n4 Counterspell\\n4 Consider\\n4 Expressive Iteration\\n2 Spell Pierce\\n2 Unholy Heat\\n2 Subtlety\\n1 Brazen Borrower\\n1 Jace, the Mind Sculptor\\n4 Scalding Tarn\\n4 Flooded Strand\\n2 Steam Vents\\n2 Volcanic Island\\n1 Mountain\\n1 Island\\n4 Misty Rainforest\\n4 Polluted Delta\\n\\nSideboard:\\n2 Engineered Explosives\\n2 Relic of Progenitus\\n2 Blood Moon\\n2 Dress Down\\n2 Subtlety\\n2 Flusterstorm\\n1 Brazen Borrower\\n2 Surgical Extraction\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/chat",
+              "host": ["{{base_url}}"],
+              "path": ["chat"]
+            },
+            "description": "Start a deck coaching conversation with deck text and archetype."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /conversations/{id}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has required fields\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('conversation_id');",
+                  "    pm.expect(jsonData).to.have.property('state');",
+                  "    pm.expect(jsonData).to.have.property('messages');",
+                  "    pm.expect(jsonData.messages).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/conversations/{{conversation_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["conversations", "{{conversation_id}}"]
+            },
+            "description": "Retrieve conversation state and message history."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for managing conversations and chat interactions."
+    },
+    {
+      "name": "Example Workflows",
+      "item": [
+        {
+          "name": "Meta Research Workflow",
+          "item": [
+            {
+              "name": "1. Get Welcome Info",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/welcome",
+                  "host": ["{{base_url}}"],
+                  "path": ["welcome"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "2. Get Formats",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/formats",
+                  "host": ["{{base_url}}"],
+                  "path": ["formats"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "3. Get Archetypes",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/archetypes?format={{format}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["archetypes"],
+                  "query": [
+                    {
+                      "key": "format",
+                      "value": "{{format}}"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "4. Start Meta Research Conversation",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response is SSE stream\", function () {",
+                      "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                      "});",
+                      "",
+                      "// Extract conversation_id from SSE metadata if not already set",
+                      "const responseText = pm.response.text();",
+                      "const metadataMatch = responseText.match(/event: metadata\\ndata: ({[^}]+})/);",
+                      "if (metadataMatch) {",
+                      "    const metadata = JSON.parse(metadataMatch[1]);",
+                      "    if (metadata.conversation_id && !pm.collectionVariables.get('conversation_id')) {",
+                      "        pm.collectionVariables.set('conversation_id', metadata.conversation_id);",
+                      "    }",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": \"What are the top decks in {{format}}?\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"context\": {\n    \"format\": \"{{format}}\",\n    \"days\": 30\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/chat",
+                  "host": ["{{base_url}}"],
+                  "path": ["chat"]
+                },
+                "description": "Start a meta research conversation using conversation_id from /welcome. This demonstrates the /welcome → /chat flow."
+              },
+              "response": []
+            },
+            {
+              "name": "5. Get Conversation State",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/conversations/{{conversation_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["conversations", "{{conversation_id}}"]
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Complete workflow for meta research: discover capabilities, select format, start conversation."
+        },
+        {
+          "name": "Deck Coaching Workflow",
+          "item": [
+            {
+              "name": "1. Get Welcome Info",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/welcome",
+                  "host": ["{{base_url}}"],
+                  "path": ["welcome"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "2. Start Deck Coaching Conversation",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response is SSE stream\", function () {",
+                      "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/event-stream');",
+                      "});",
+                      "",
+                      "// Extract conversation_id from SSE metadata if not already set",
+                      "const responseText = pm.response.text();",
+                      "const metadataMatch = responseText.match(/event: metadata\\ndata: ({[^}]+})/);",
+                      "if (metadataMatch) {",
+                      "    const metadata = JSON.parse(metadataMatch[1]);",
+                      "    if (metadata.conversation_id && !pm.collectionVariables.get('conversation_id')) {",
+                      "        pm.collectionVariables.set('conversation_id', metadata.conversation_id);",
+                      "    }",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": \"Analyze my deck and suggest improvements\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"context\": {\n    \"format\": \"Modern\",\n    \"archetype\": \"Murktide\",\n    \"deck_text\": \"4 Lightning Bolt\\n4 Ragavan, Nimble Pilferer\\n4 Dragon's Rage Channeler\\n4 Murktide Regent\\n4 Counterspell\\n4 Consider\\n4 Expressive Iteration\\n2 Spell Pierce\\n2 Unholy Heat\\n2 Subtlety\\n1 Brazen Borrower\\n1 Jace, the Mind Sculptor\\n4 Scalding Tarn\\n4 Flooded Strand\\n2 Steam Vents\\n2 Volcanic Island\\n1 Mountain\\n1 Island\\n4 Misty Rainforest\\n4 Polluted Delta\\n\\nSideboard:\\n2 Engineered Explosives\\n2 Relic of Progenitus\\n2 Blood Moon\\n2 Dress Down\\n2 Subtlety\\n2 Flusterstorm\\n1 Brazen Borrower\\n2 Surgical Extraction\"\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/chat",
+                  "host": ["{{base_url}}"],
+                  "path": ["chat"]
+                },
+                "description": "Start a deck coaching conversation using conversation_id from /welcome. This demonstrates the /welcome → /chat flow."
+              },
+              "response": []
+            },
+            {
+              "name": "3. Continue with Optimization Request",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"message\": \"Optimize my sideboard for the current meta\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"context\": {}\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/chat",
+                  "host": ["{{base_url}}"],
+                  "path": ["chat"]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "4. Get Conversation State",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/conversations/{{conversation_id}}",
+                  "host": ["{{base_url}}"],
+                  "path": ["conversations", "{{conversation_id}}"]
+                }
+              },
+              "response": []
+            }
+          ],
+          "description": "Complete workflow for deck coaching: provide deck, get analysis, request optimizations."
+        }
+      ],
+      "description": "Example workflows demonstrating common use cases."
+    }
+  ]
+}

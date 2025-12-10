@@ -50,7 +50,7 @@ The system currently ingests tournament data (tournaments, players, decklists, m
 **Implementation:**
 - Use `langchain-core`, `langchain-openai`, `langchain-anthropic`, and `langchain-aws` for unified interface across providers
 - Store `llm_model` (e.g., "gpt-4o", "claude-3-5-sonnet-20241022") and `prompt_id` in `archetype_classifications` table
-- Model selection via `LLM_MODEL` environment variable, provider via `--model-provider` CLI parameter
+- Model selection via `LARGE_LANGUAGE_MODEL` environment variable, provider via `--model-provider` CLI parameter
 
 ### Decision 2: Archetype Schema Design
 **What:** Create two-table normalized design with `archetype_groups` for unique archetype definitions and `archetype_classifications` for historical classification events.
@@ -246,7 +246,7 @@ decklists.decklist_id → deck_cards (section='mainboard') → cards → LLM pro
 
 ## Open Questions
 1. **Q:** Which LLM model should be default (gpt-4o, claude-3-5-sonnet)?
-   - **A:** Start with `gpt-4o-mini` for cost efficiency, allow override via `LLM_MODEL` env var
+   - **A:** Start with `gpt-4o-mini` for cost efficiency, allow override via `LARGE_LANGUAGE_MODEL` env var
 
 2. **Q:** Should we support reclassification of existing decks (force flag)?
    - **A:** Yes, use `--mode initial` flag to run classification on unclassified and classified decks

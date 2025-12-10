@@ -137,13 +137,13 @@
 
 ## 6. Data Format Updates
 
-- [x] 6.1 Update `parse_and_validate_decklist` to include rulings field
+- [x] 6.1 Update `get_enriched_deck` to include rulings field
   - [x] 6.1.1 Updated SQL query to SELECT rulings column
   - [x] 6.1.2 Added rulings to card_lookup dict and enriched_card output
-- [x] 6.2 Update `optimize_mainboard` and `optimize_sideboard` to use full decklist (main+side)
-  - [x] 6.2.1 Created `_format_full_decklist` helper function to format cards with all required fields: name, quantity, oracle_text, rulings, type_line, color_identity, mana_cost, cmc, section
-  - [x] 6.2.2 Updated `optimize_mainboard` to pass full decklist instead of just mainboard
-  - [x] 6.2.3 Updated `optimize_sideboard` to pass full decklist instead of separate mainboard/sideboard
+- [x] 6.2 Update `optimize_mainboard` and `optimize_sideboard` to use full deck (main+side)
+  - [x] 6.2.1 Created `_format_full_deck` helper function to format cards with all required fields: name, quantity, oracle_text, rulings, type_line, color_identity, mana_cost, cmc, section
+  - [x] 6.2.2 Updated `optimize_mainboard` to pass full deck instead of just mainboard
+  - [x] 6.2.3 Updated `optimize_sideboard` to pass full deck instead of separate mainboard/sideboard
 - [x] 6.3 Enhance available card pool with oracle_text
   - [x] 6.3.1 Updated `_get_legal_cards_for_format` to fetch oracle_text from database
   - [x] 6.3.2 Updated `_format_card_details_by_type` to include oracle_text in formatted output

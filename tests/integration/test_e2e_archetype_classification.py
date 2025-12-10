@@ -26,8 +26,8 @@ class TestLLMClientAzureOpenAI:
     @pytest.fixture
     def azure_client(self):
         """Create Azure OpenAI LLM client"""
-        model_name = os.getenv('LLM_MODEL')
-        assert model_name, "LLM_MODEL environment variable not set"
+        model_name = os.getenv('LARGE_LANGUAGE_MODEL')
+        assert model_name, "LARGE_LANGUAGE_MODEL environment variable not set"
         
         api_key = os.getenv('AZURE_OPENAI_API_KEY')
         assert api_key, "AZURE_OPENAI_API_KEY environment variable not set"
@@ -382,7 +382,7 @@ class TestArchetypeClassificationPipeline:
             'reasoning': 'Deck contains direct damage spells'
         }
         
-        with patch.object(pipeline, 'classify_decklist_llm') as mock_classify:
+        with patch.object(pipeline, 'classify_deck_llm') as mock_classify:
             mock_classify.return_value = ArchetypeClassificationResponse(**mock_response)
             
             # Insert archetype
@@ -471,7 +471,7 @@ class TestArchetypeClassificationPipeline:
             'reasoning': 'Deck contains counterspells and card draw'
         }
         
-        with patch.object(pipeline, 'classify_decklist_llm') as mock_classify:
+        with patch.object(pipeline, 'classify_deck_llm') as mock_classify:
             mock_classify.return_value = ArchetypeClassificationResponse(**mock_response)
             archetype_group_id = pipeline.insert_archetype(decklist_id, format_name, cards)
         
@@ -520,7 +520,7 @@ class TestArchetypeClassificationPipeline:
                 reasoning='Test classification'
             )
         
-        with patch.object(pipeline, 'classify_decklist_llm', side_effect=mock_classify):
+        with patch.object(pipeline, 'classify_deck_llm', side_effect=mock_classify):
             # Run initial load with small batch size
             result = pipeline.load_initial(batch_size=5)
             
@@ -590,7 +590,7 @@ class TestArchetypeClassificationPipeline:
                 reasoning='Test classification'
             )
         
-        with patch.object(pipeline, 'classify_decklist_llm', side_effect=mock_classify):
+        with patch.object(pipeline, 'classify_deck_llm', side_effect=mock_classify):
             initial_result = pipeline.load_initial(batch_size=3)
             assert initial_result['success'] is True, "Initial load failed"
             
@@ -654,7 +654,7 @@ class TestArchetypeClassificationPipeline:
             'reasoning': 'Unclear archetype'
         }
         
-        with patch.object(pipeline, 'classify_decklist_llm') as mock_classify:
+        with patch.object(pipeline, 'classify_deck_llm') as mock_classify:
             mock_classify.return_value = ArchetypeClassificationResponse(**low_confidence_response)
             
             archetype_group_id = pipeline.insert_archetype(decklist_id, format_name, cards)
@@ -698,7 +698,7 @@ class TestArchetypeClassificationPipeline:
                 'reasoning': f'Test archetype {i+1}'
             }
             
-            with patch.object(pipeline, 'classify_decklist_llm') as mock_classify:
+            with patch.object(pipeline, 'classify_deck_llm') as mock_classify:
                 mock_classify.return_value = ArchetypeClassificationResponse(**mock_response)
                 archetype_group_id = pipeline.insert_archetype(decklist_id, format_name, cards)
             

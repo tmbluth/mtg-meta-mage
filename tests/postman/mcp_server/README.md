@@ -13,7 +13,7 @@ The collection includes requests for:
 - **Get Format Matchup Stats** - Get complete matchup matrix for the format
 
 ### Deck Coaching Tools
-- **Parse and Validate Decklist** - Parse a decklist and enrich with card details
+- **Get Enriched Deck** - Parse a deck and enrich with card details from database
 - **Get Deck Matchup Stats** - Get matchup stats for a specific archetype
 - **Generate Matchup Strategy** - Generate AI-powered strategy advice for a matchup
 
@@ -48,30 +48,17 @@ You can modify these in the collection variables or create a Postman environment
 Before using the collection, start the MCP server:
 
 ```bash
-# Start the FastMCP server
-fastmcp run src/app/mcp/server.py --port 8000
-
-# Or if using the FastAPI app (which includes MCP tools):
-uvicorn src.app.api.main:app --reload --port 8080
+# Start the MCP server (uses proper module imports for tool registration)
+uv run python src/app/mcp/run_server.py --port 8000
 ```
+
+> **Note**: Use `run_server.py` instead of `fastmcp run server.py` to ensure tools are properly registered. The `fastmcp run` command creates a separate MCP instance that doesn't have the tools registered via decorators.
 
 ## Architecture
 
-The system uses a two-server architecture:
+The MCP server exposes tools via JSON-RPC protocol with `streamable_http` transport.
 
-1. **FastMCP Server** (port 8000): Exposes MCP tools via JSON-RPC protocol with `streamable_http` transport
-2. **FastAPI Server** (port 8080): REST API endpoints that call MCP tools internally using `MultiServerMCPClient`
-
-### FastAPI Endpoints (Recommended for Testing)
-
-The FastAPI server provides REST endpoints that internally call MCP tools:
-
-- **GET** `/api/v1/meta/archetypes` - Get archetype rankings (calls `get_format_meta_rankings` MCP tool)
-- **GET** `/api/v1/meta/matchups` - Get matchup matrix (calls `get_format_matchup_stats` MCP tool)
-
-These endpoints are the recommended way to test the system as they work out of the box with standard HTTP clients.
-
-### MCP Server (For External MCP Clients)
+### MCP Server
 
 The MCP server exposes tools through the standard MCP JSON-RPC protocol:
 
@@ -93,7 +80,7 @@ Add to your Claude Desktop MCP configuration:
 ```json
 {
   "mcpServers": {
-    "mtg-meta-mage": {
+    "mtg-meta-mage-mcp": {
       "url": "http://localhost:8000/mcp",
       "transport": "streamable_http"
     }
@@ -130,21 +117,16 @@ result = await client.call_tool(
 
 ### Prerequisites
 
-1. **Start the MCP Server**:
-   ```bash
-   uv run fastmcp run src/app/mcp/server.py --transport http --port 8000
-   ```
-
-2. **Start the FastAPI Server**:
-   ```bash
-   uv run uvicorn src.app.api.main:app --host 0.0.0.0 --port 8080
-   ```
+**Start the MCP Server**:
+```bash
+uv run python src/app/mcp/run_server.py --port 8000
+```
 
 ### Testing Steps
 
-1. **Start with Health Check**
-   - Run the "FastAPI Health Check" request to verify the FastAPI server is accessible
-   - This confirms both servers are running
+1. **Verify MCP Server**
+   - Confirm the MCP server is running on port 8000
+   - The server exposes tools via JSON-RPC protocol
 
 2. **Test FastAPI Endpoints** (Recommended)
    - Use "Get Archetype Rankings" to see current meta landscape
@@ -334,10 +316,10 @@ For best results, use both tools in sequence:
 **Example Workflow:**
 
 ```python
-# Step 1: Parse your decklist
+# Step 1: Parse your deck
 deck = await client.call_tool(
     "meta_analytics",
-    "parse_and_validate_decklist",
+    "get_enriched_deck",
     arguments={"decklist_text": "4 Lightning Bolt\n4 Murktide Regent\n..."}
 )
 
@@ -369,7 +351,7 @@ sideboard_improvements = await client.call_tool(
 **Notes:**
 - Both tools respect format legality constraints (cards must be legal in the specified format)
 - Both tools filter cards to match your deck's color identity
-- Both tools use actual meta decklists (up to 5 recent lists per archetype) to inform recommendations
+- Both tools use actual meta decks (up to 5 recent lists per archetype) to inform recommendations
 - Sideboard tool enforces the 15-card sideboard constraint and will retry if needed
 
 ## Additional Resources

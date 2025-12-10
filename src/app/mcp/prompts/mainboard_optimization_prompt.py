@@ -14,12 +14,12 @@ Archetype: {archetype}
 # Current Meta Context
 You are optimizing against the top {top_n} most frequent archetypes in {format}:
 
-{top_n_archetype_decklists}
+{top_n_archetype_decks}
 
 # Available Card Pool
 Below is a curated list of cards for you to choose from. This list has been filtered to:
 - Cards legal in {format}
-- Cards that have appeared in tournament decklists in the recent past
+- Cards that have appeared in tournament decks in the recent past
 - Cards matching your deck's color identity (including colorless)
 - Limited to <500 most relevant cards
 
@@ -30,9 +30,9 @@ Analyze the mainboard for flex spots (cards that are not critical to the deck's 
 
 ## Requirements
 1. Only suggest cards from the available card pool above
-2. Identify flex spots (cards that can be replaced without breaking the deck's core synergies). This is a subjective judgement and should be based on the actual cards you see in the top archetypes' decklists.
+2. Identify flex spots (cards that can be replaced without breaking the deck's core synergies). This is a subjective judgement and should be based on the actual cards you see in the top archetypes' decks.
 3. For each flex spot, recommend 1-3 replacement cards
-4. Provide detailed justifications based on the actual cards you see in the top archetypes' decklists
+4. Provide detailed justifications based on the actual cards you see in the top archetypes' decks
 5. Explain why you did NOT recommend other common alternatives
 
 ## Output Format
@@ -53,7 +53,7 @@ Return your analysis as valid JSON with the following structure:
         {{
           "card_name": "Suggested Replacement",
           "quantity": 2,
-          "justification": "Why this card improves against top archetypes. Reference specific cards from the meta decklists.",
+          "justification": "Why this card improves against top archetypes. Reference specific cards from the meta decks.",
           "matchup_improvements": ["Archetype 1 name", "Archetype 2 name"]
         }}
       ],
@@ -67,5 +67,5 @@ Return your analysis as valid JSON with the following structure:
   ]
 }}
 
-Be specific and reference actual cards you observe in the top archetype decklists. Only suggest cards that appear in the available card pool provided."""
+Be specific and reference actual cards you observe in the top archetype decks. Only suggest cards that appear in the available card pool provided."""
 

@@ -1,0 +1,274 @@
+"""FastAPI routes for the agent API."""
+
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+import logging
+
+from src.etl.database.connection import DatabaseConnection
+from src.app.mcp.tools.meta_research_tools import get_format_archetypes
+
+from .graph import create_agent_graph
+from .graph import set_tool_catalog
+from .prompts import generate_welcome_message
+from .state import ConversationState, create_initial_state
+from .store import InMemoryConversationStore
+from .streaming import (
+    content_event,
+    done_event,
+    metadata_event,
+    state_event,
+    thinking_event,
+)
+from .tool_catalog import get_tool_catalog_safe
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+conversation_store = InMemoryConversationStore()
+agent_graph = create_agent_graph()
+
+
+@router.get("/welcome")
+async def get_welcome():
+    """
+    Create a new conversation session and return welcome information.
+    
+    This endpoint creates a new conversation, retrieves available tools from the MCP server,
+    generates an LLM-interpreted welcome message, and returns all necessary context for
+    the client to begin a conversation.
+    """
+    # Get formats from database
+    query = """
+        SELECT DISTINCT format 
+        FROM tournaments 
+        WHERE format NOT IN ('Commander', 'EDH')
+    """
+    with DatabaseConnection.get_cursor() as cursor:
+        cursor.execute(query)
+        rows = cursor.fetchall()
+    formats = sorted([row[0] for row in rows if row and row[0]])
+    
+    # Get tool catalog dynamically from MCP server
+    tool_catalog = await get_tool_catalog_safe()
+    if not tool_catalog:
+        raise HTTPException(
+            status_code=503,
+            detail="MCP server tool discovery failed. Ensure the MCP server is running."
+        )
+    
+    # Define workflows with example queries and tool mappings
+    workflow_tool_mappings = {
+        "meta_research": ["get_format_meta_rankings", "get_format_matchup_stats", "get_format_archetypes"],
+        "deck_coaching": ["get_enriched_deck", "get_deck_matchup_stats", "generate_deck_matchup_strategy", "optimize_mainboard", "optimize_sideboard"]
+    }
+    
+    workflows = [
+        {
+            "name": "meta_research",
+            "description": "Format-wide analytics: meta rankings, matchup spreads, archetype lists",
+            "example_queries": [
+                "What are the top decks in Modern?",
+                "Show me the Pioneer meta",
+                "What's the matchup spread for Rakdos in Standard?"
+            ]
+        },
+        {
+            "name": "deck_coaching",
+            "description": "Personalized coaching for your specific deck",
+            "example_queries": [
+                "How should I play against Tron? [provide deck]",
+                "Optimize my sideboard [provide deck]",
+                "What are my deck's bad matchups?"
+            ]
+        }
+    ]
+    
+    # Enrich workflows with tool details from MCP catalog
+    tool_lookup = {tool["name"]: tool for tool in tool_catalog}
+    for workflow in workflows:
+        workflow_name = workflow["name"]
+        tool_names = workflow_tool_mappings.get(workflow_name, [])
+        workflow["tool_details"] = [
+            {"name": name, "description": tool_lookup[name]["description"]}
+            for name in tool_names
+            if name in tool_lookup
+        ]
+    
+    # Generate LLM-interpreted welcome message
+    welcome_message = generate_welcome_message(
+        tool_catalog=tool_catalog,
+        workflows=workflows,
+        available_formats=formats
+    )
+    
+    # Create a new conversation with session context
+    initial_state = create_initial_state()
+    initial_state["tool_catalog"] = tool_catalog
+    initial_state["available_formats"] = formats
+    initial_state["workflows"] = workflows
+    
+    convo = conversation_store.create(initial_state=initial_state)
+    
+    return {
+        "conversation_id": convo["conversation_id"],
+        "message": welcome_message,
+        "available_formats": formats,
+        "workflows": workflows,
+        "tool_count": len(tool_catalog)
+    }
+
+
+class ChatContext(BaseModel):
+    format: Optional[str] = None
+    archetype: Optional[str] = None
+    days: Optional[int] = None
+    deck_text: Optional[str] = None
+
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_id: Optional[str] = None
+    context: ChatContext = Field(default_factory=ChatContext)
+
+
+@router.get("/formats")
+async def list_formats():
+    """Return available formats derived from tournaments table."""
+    query = """
+        SELECT DISTINCT format 
+        FROM tournaments 
+        WHERE format NOT IN ('Commander', 'EDH')
+    """
+    with DatabaseConnection.get_cursor() as cursor:
+        cursor.execute(query)
+        rows = cursor.fetchall()
+
+    formats = sorted([row[0] for row in rows if row and row[0]])
+    return {"formats": formats}
+
+
+@router.get("/archetypes")
+async def list_archetypes(format: Optional[str] = Query(default=None)):
+    if not format:
+        raise HTTPException(status_code=400, detail="format is required")
+
+    result = get_format_archetypes.fn(format=format, days=30)
+    if result.get("archetypes") is None:
+        raise HTTPException(status_code=404, detail="format not found")
+    return result
+
+
+@router.get("/conversations/{conversation_id}")
+async def get_conversation(conversation_id: str):
+    convo = conversation_store.get(conversation_id)
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {
+        "conversation_id": conversation_id,
+        "state": {
+            "format": convo["state"].get("format"),
+            "archetype": convo["state"].get("archetype"),
+            "days": convo["state"].get("days"),
+            # has_deck is true if user provided deck_text OR we have enriched card_details
+            "has_deck": bool(convo["state"].get("deck_text") or convo["state"].get("card_details")),
+        },
+        "messages": convo["state"].get("messages", []),
+    }
+
+
+def _apply_context(state: ConversationState, context: ChatContext) -> ConversationState:
+    if context.format:
+        state["format"] = context.format
+    if context.archetype:
+        state["archetype"] = context.archetype
+    if context.days is not None:
+        state["days"] = context.days
+    if context.deck_text:
+        state["deck_text"] = context.deck_text
+    return state
+
+
+@router.post("/chat")
+async def chat(request: ChatRequest):
+    if not request.message or not request.message.strip():
+        raise HTTPException(status_code=400, detail="message is required")
+
+    # Load existing conversation or create new one
+    if request.conversation_id and conversation_store.exists(request.conversation_id):
+        convo = conversation_store.get(request.conversation_id)
+    else:
+        convo = conversation_store.create(conversation_id=request.conversation_id, initial_state=create_initial_state())
+
+    state = convo["state"].copy()
+    state = _apply_context(state, request.context)
+    
+    # Prefer session-stored tool_catalog from /welcome, fall back to fresh fetch
+    tool_catalog = state.get("tool_catalog")
+    if not tool_catalog:
+        tool_catalog = await get_tool_catalog_safe()
+        state["tool_catalog"] = tool_catalog
+    
+    # Set tool catalog for graph's clarification prompts
+    if tool_catalog:
+        set_tool_catalog(tool_catalog)
+    
+    conversation_store.update(convo["conversation_id"], state_updates=state, messages=[{"role": "user", "content": request.message.strip()}])
+
+    def event_stream():
+        current = conversation_store.get(convo["conversation_id"])["state"]
+        yield metadata_event(convo["conversation_id"], current, tool_catalog=tool_catalog)
+        yield thinking_event("Routing your request...")
+        try:
+            config = {"configurable": {"thread_id": convo["conversation_id"]}}
+            updated_state = agent_graph.invoke(current, config=config)
+            
+            # Merge updated state back into conversation store
+            conversation_store.update(convo["conversation_id"], state_updates=updated_state)
+            
+            # Get the last message - should be assistant response
+            # LangGraph with add_messages reducer returns LangChain message objects
+            messages = updated_state.get("messages", [])
+            if messages:
+                last_message = messages[-1]
+                # Handle both LangChain message objects and dicts
+                if hasattr(last_message, "content"):
+                    # LangChain message object (AIMessage, HumanMessage, etc.)
+                    msg_type = getattr(last_message, "type", "")
+                    if msg_type == "ai":
+                        yield content_event(last_message.content)
+                    else:
+                        # Look for most recent AI message
+                        ai_messages = [m for m in messages if getattr(m, "type", None) == "ai"]
+                        if ai_messages:
+                            yield content_event(ai_messages[-1].content)
+                        else:
+                            logger.warning(f"No AI message found. Last message type: {msg_type}")
+                            yield content_event("I'm processing your request. Please wait...")
+                elif last_message.get("role") == "assistant":
+                    yield content_event(last_message["content"])
+                else:
+                    # Last message is user - look for most recent assistant message
+                    assistant_messages = [m for m in messages if m.get("role") == "assistant"]
+                    if assistant_messages:
+                        yield content_event(assistant_messages[-1]["content"])
+                    else:
+                        logger.warning(f"No assistant message found. Last message: {last_message}")
+                        yield content_event("I'm processing your request. Please wait...")
+            else:
+                logger.warning("No messages found in graph response")
+                yield content_event("I'm processing your request. Please wait...")
+        except Exception as e:
+            logger.error(f"Error in agent graph: {e}", exc_info=True)
+            yield content_event(f"I encountered an error processing your request. Please try again.")
+        finally:
+            # Always send state and done events
+            final_state = conversation_store.get(convo["conversation_id"])["state"]
+            yield state_event(final_state)
+            yield done_event()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+

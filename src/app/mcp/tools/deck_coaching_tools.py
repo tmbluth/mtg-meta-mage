@@ -1,7 +1,7 @@
 """
 Deck Coaching MCP Tools - SPECIFIC DECK analysis and personalized advice.
 
-This module provides MCP tools for analyzing user decklists and generating matchup coaching.
+This module provides MCP tools for analyzing user decks and generating matchup coaching.
 Use these tools for PERSONALIZED deck advice, not general meta research.
 """
 
@@ -10,39 +10,39 @@ import os
 from typing import Optional
 
 from src.app.mcp.server import mcp
-from src.core_utils import normalize_card_name, parse_decklist
+from src.core_utils import normalize_card_name, parse_deck
 from src.etl.database.connection import DatabaseConnection
 from Levenshtein import distance as levenshtein_distance
 
 logger = logging.getLogger(__name__)
 
 @mcp.tool()
-def parse_and_validate_decklist(decklist: str) -> dict:
+def get_enriched_deck(deck: str) -> dict:
     """
-    Parse a decklist and enrich with card details from the database.
+    Parse a deck and enrich with card details from the database.
     
-    Use this when users provide a decklist to analyze.
-    This is for SPECIFIC DECK validation, not general meta queries.
+    Use this when users provide a deck to analyze.
+    This is for SPECIFIC DECK enrichment, not general meta queries.
 
     Args:
-        decklist: Text representation of deck (e.g., "4 Lightning Bolt\\n3 Snapcaster Mage")
+        deck: Text representation of deck (e.g., "4 Lightning Bolt\\n3 Snapcaster Mage")
 
     Returns:
         Dictionary with enriched card data including:
-        - card_details: List of card objects with name, oracle_text, type_line, mana_cost, cmc, color_identity
+        - card_details: List of card objects with name, oracle_text, type_line, mana_cost, cmc, color_identity, rulings
         - mainboard_count: Number of mainboard cards
         - sideboard_count: Number of sideboard cards
         - errors: List of cards that couldn't be found
     """
-    # Parse the decklist string
-    parsed_cards = parse_decklist(decklist)
+    # Parse the deck string
+    parsed_cards = parse_deck(deck)
     
     if not parsed_cards:
         return {
             "card_details": [],
             "mainboard_count": 0,
             "sideboard_count": 0,
-            "errors": ["Empty or invalid decklist"]
+            "errors": ["Empty or invalid deck"]
         }
     
     # Fetch card data from database
@@ -55,8 +55,9 @@ def parse_and_validate_decklist(decklist: str) -> dict:
     """
     
     with DatabaseConnection.get_cursor() as cursor:
-        # Normalize card names for lookup
-        normalized_names = [normalize_card_name(name) for name in card_names]
+        # Normalize card names for lookup and lowercase for SQL comparison
+        # SQL uses LOWER(name) so we need to lowercase normalized names for matching
+        normalized_names = [normalize_card_name(name).lower() for name in card_names]
         cursor.execute(query, (normalized_names,))
         db_cards = cursor.fetchall()
     
@@ -182,20 +183,20 @@ def get_deck_matchup_stats(archetype: str, format: str, days: int = 14) -> dict:
 
 
 @mcp.tool()
-def generate_matchup_strategy(
+def generate_deck_matchup_strategy(
     card_details: list,
     archetype: str,
     opponent_archetype: str,
     matchup_stats: Optional[dict] = None
 ) -> dict:
     """
-    Generate AI-powered coaching for a specific matchup.
+    Generate AI-powered coaching for a specific matchup given a user's deck.
     
     Use this after getting matchup stats to provide actionable advice.
     This creates PERSONALIZED strategy based on the user's exact deck.
 
     Args:
-        card_details: List of enriched card objects from parse_and_validate_decklist
+        card_details: List of enriched card objects from get_enriched_deck
         archetype: Your deck's archetype
         opponent_archetype: Opponent's archetype
         matchup_stats: Optional matchup statistics (win_rate, match_count)
@@ -209,8 +210,8 @@ def generate_matchup_strategy(
     """
     from src.app.mcp.prompts.coaching_prompt import COACHING_PROMPT_TEMPLATE
     
-    # Prepare full decklist with all required card details for LLM
-    deck_details = _format_full_decklist(card_details)
+    # Prepare full deck with all required card details for LLM
+    deck_details = _format_full_deck(card_details)
     
     # Format matchup stats if available
     matchup_context = ""
@@ -235,7 +236,7 @@ def generate_matchup_strategy(
         from src.clients.llm_client import get_llm_client
         
         # Get model name and provider from environment
-        model_name = os.getenv("LLM_MODEL")
+        model_name = os.getenv("LARGE_LANGUAGE_MODEL")
         model_provider = os.getenv("LLM_PROVIDER")
         
         llm = get_llm_client(model_name, model_provider)
@@ -270,8 +271,8 @@ def _format_card_list(card_details: list) -> str:
     return "\n".join(lines)
 
 
-def _format_full_decklist(card_details: list) -> str:
-    """Format full decklist with all required card details for LLM prompt.
+def _format_full_deck(card_details: list) -> str:
+    """Format full deck with all required card details for LLM prompt.
     
     Includes: name, quantity, oracle_text, rulings, type_line, color_identity, mana_cost, cmc, section
     """
@@ -442,25 +443,25 @@ def _filter_cards_by_color_identity(card_details: list, deck_colors: set) -> lis
     return filtered
 
 
-def _fetch_archetype_decklists(
+def _fetch_archetype_decks(
     archetype_group_ids: list,
     format: str,
     limit_per_archetype: int = 5
 ) -> dict:
     """
-    Fetch recent decklists for each archetype.
+    Fetch recent decks for each archetype.
     
     Args:
         archetype_group_ids: List of archetype group IDs
         format: Tournament format
-        limit_per_archetype: Max decklists per archetype (default: 5)
+        limit_per_archetype: Max decks per archetype (default: 5)
     
     Returns:
-        Dict mapping archetype_group_id to list of decklists with card details:
+        Dict mapping archetype_group_id to list of decks with card details:
         {
             archetype_id: [
                 {
-                    "decklist_id": int,
+                    "decklist_id": int,  # DB primary key
                     "player": str,
                     "tournament_date": str,
                     "cards": [
@@ -515,10 +516,10 @@ def _fetch_archetype_decklists(
             )
             rows = cursor.fetchall()
             
-            # Group by decklist
-            decklists_by_id = {}
+            # Group by deck
+            decks_by_id = {}
             for row in rows:
-                decklist_id = row[0]
+                decklist_id = row[0]  # DB primary key
                 archetype_id = row[1]
                 player = row[2]
                 tournament_date = row[3]
@@ -526,50 +527,50 @@ def _fetch_archetype_decklists(
                 section = row[5]
                 card_name = row[6]
                 
-                if decklist_id not in decklists_by_id:
-                    decklists_by_id[decklist_id] = {
-                        "decklist_id": decklist_id,
+                if decklist_id not in decks_by_id:
+                    decks_by_id[decklist_id] = {
+                        "decklist_id": decklist_id,  # DB primary key
                         "archetype_group_id": archetype_id,
                         "player": player,
                         "tournament_date": str(tournament_date),
                         "cards": []
                     }
                 
-                decklists_by_id[decklist_id]["cards"].append({
+                decks_by_id[decklist_id]["cards"].append({
                     "name": card_name,
                     "quantity": quantity,
                     "section": section
                 })
             
             # Group by archetype
-            for decklist in decklists_by_id.values():
-                archetype_id = decklist["archetype_group_id"]
+            for deck in decks_by_id.values():
+                archetype_id = deck["archetype_group_id"]
                 if archetype_id not in result:
                     result[archetype_id] = []
-                result[archetype_id].append(decklist)
+                result[archetype_id].append(deck)
         
         return result
     
     except Exception as e:
-        logger.error(f"Error fetching archetype decklists: {e}")
+        logger.error(f"Error fetching archetype decks: {e}")
         return {}
 
 
-def _format_archetype_decklists_for_prompt(
-    archetype_decklists: dict,
+def _format_archetype_decks_for_prompt(
+    archetype_decks: dict,
     archetype_metadata: list,
     include_sideboard: bool = False
 ) -> str:
     """
-    Format archetype decklists into readable text for LLM prompt.
+    Format archetype decks into readable text for LLM prompt.
     
     Args:
-        archetype_decklists: Dict from _fetch_archetype_decklists
+        archetype_decks: Dict from _fetch_archetype_decks
         archetype_metadata: List of archetype info dicts with name, meta_share
         include_sideboard: Whether to include sideboard cards (for sideboard optimization)
     
     Returns:
-        Formatted string with archetype decklists
+        Formatted string with archetype decks
     """
     lines = []
     
@@ -579,7 +580,7 @@ def _format_archetype_decklists_for_prompt(
         for arch in archetype_metadata
     }
     
-    for archetype_id, decklists in archetype_decklists.items():
+    for archetype_id, decks in archetype_decks.items():
         metadata = metadata_lookup.get(archetype_id, {})
         archetype_name = metadata.get("archetype", f"Archetype {archetype_id}")
         meta_share = metadata.get("meta_share")
@@ -588,14 +589,14 @@ def _format_archetype_decklists_for_prompt(
         if meta_share:
             lines.append(f"Meta Share: {meta_share:.1f}%")
         
-        lines.append(f"\nSample Decklists ({len(decklists)} recent):")
+        lines.append(f"\nSample Decks ({len(decks)} recent):")
         
-        for i, decklist in enumerate(decklists, 1):
-            lines.append(f"\n### Sample {i} - {decklist['player']} ({decklist['tournament_date']})")
+        for i, deck in enumerate(decks, 1):
+            lines.append(f"\n### Sample {i} - {deck['player']} ({deck['tournament_date']})")
             
             # Group card details by section
-            mainboard_cards = [c for c in decklist["cards"] if c["section"] == "mainboard"]
-            sideboard_cards = [c for c in decklist["cards"] if c["section"] == "sideboard"]
+            mainboard_cards = [c for c in deck["cards"] if c["section"] == "mainboard"]
+            sideboard_cards = [c for c in deck["cards"] if c["section"] == "sideboard"]
             
             lines.append("\nMainboard:")
             for card_detail in mainboard_cards:
@@ -712,7 +713,7 @@ def optimize_mainboard(
     replacements that improve matchups against the current meta.
     
     Args:
-        card_details: List of enriched card objects from parse_and_validate_decklist
+        card_details: List of enriched card objects from get_enriched_deck
         archetype: Your deck's archetype name
         format: Tournament format (e.g., "Modern", "Pioneer")
         top_n: Number of top archetypes to optimize against (default: 5)
@@ -764,19 +765,19 @@ def optimize_mainboard(
         # Extract archetype group IDs
         archetype_group_ids = [arch["archetype_group_id"] for arch in top_archetypes]
         
-        # Fetch recent decklists for top archetypes
-        archetype_decklists = _fetch_archetype_decklists(
+        # Fetch recent decks for top archetypes
+        archetype_decks = _fetch_archetype_decks(
             archetype_group_ids=archetype_group_ids,
             format=normalized_format,
             limit_per_archetype=5
         )
         
-        # Format full decklist (main+side) with all required card details
-        deck_details = _format_full_decklist(card_details)
+        # Format full deck (main+side) with all required card details
+        deck_details = _format_full_deck(card_details)
         
-        # Format archetype decklists (mainboard only)
-        archetype_text = _format_archetype_decklists_for_prompt(
-            archetype_decklists=archetype_decklists,
+        # Format archetype decks (mainboard only)
+        archetype_text = _format_archetype_decks_for_prompt(
+            archetype_decks=archetype_decks,
             archetype_metadata=top_archetypes,
             include_sideboard=False
         )
@@ -790,12 +791,12 @@ def optimize_mainboard(
             archetype=archetype,
             deck_details=deck_details,
             top_n=top_n,
-            top_n_archetype_decklists=archetype_text,
+            top_n_archetype_decks=archetype_text,
             available_card_pool=available_cards_text
         )
         
         # Call LLM
-        model_name = os.getenv("LLM_MODEL")
+        model_name = os.getenv("LARGE_LANGUAGE_MODEL")
         model_provider = os.getenv("LLM_PROVIDER")
         llm = get_llm_client(model_name, model_provider)
         response = llm.run(prompt)
@@ -843,7 +844,7 @@ def optimize_sideboard(
     removals, and provides sideboard guides for each matchup.
     
     Args:
-        card_details: List of enriched card objects from parse_and_validate_decklist
+        card_details: List of enriched card objects from get_enriched_deck
         archetype: Your deck's archetype name
         format: Tournament format (e.g., "Modern", "Pioneer")
         top_n: Number of top archetypes to optimize against (default: 5)
@@ -896,19 +897,19 @@ def optimize_sideboard(
         # Extract archetype group IDs
         archetype_group_ids = [arch["archetype_group_id"] for arch in top_archetypes]
         
-        # Fetch recent decklists for top archetypes (including sideboards)
-        archetype_decklists = _fetch_archetype_decklists(
+        # Fetch recent decks for top archetypes (including sideboards)
+        archetype_decks = _fetch_archetype_decks(
             archetype_group_ids=archetype_group_ids,
             format=normalized_format,
             limit_per_archetype=5
         )
         
-        # Format full decklist (main+side) with all required card details
-        deck_details = _format_full_decklist(card_details)
+        # Format full deck (main+side) with all required card details
+        deck_details = _format_full_deck(card_details)
         
-        # Format archetype decklists (include sideboards)
-        archetype_text = _format_archetype_decklists_for_prompt(
-            archetype_decklists=archetype_decklists,
+        # Format archetype decks (include sideboards)
+        archetype_text = _format_archetype_decks_for_prompt(
+            archetype_decks=archetype_decks,
             archetype_metadata=top_archetypes,
             include_sideboard=True
         )
@@ -922,12 +923,12 @@ def optimize_sideboard(
             archetype=archetype,
             deck_details=deck_details,
             top_n=top_n,
-            top_n_archetype_decklists=archetype_text,
+            top_n_archetype_decks=archetype_text,
             available_card_pool=available_cards_text
         )
         
         # Call LLM with retry logic for 15-card validation
-        model_name = os.getenv("LLM_MODEL")
+        model_name = os.getenv("LARGE_LANGUAGE_MODEL")
         model_provider = os.getenv("LLM_PROVIDER")
         llm = get_llm_client(model_name, model_provider)
         

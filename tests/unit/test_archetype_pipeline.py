@@ -207,7 +207,7 @@ def test_archetype_indexes_exist(db_cursor):
 def pipeline():
     """Create pipeline instance for testing"""
     with patch('src.etl.archetype_pipeline.DatabaseConnection'):
-        with patch.dict('os.environ', {'LLM_MODEL': 'gpt-4o-mini'}):
+        with patch.dict('os.environ', {'LARGE_LANGUAGE_MODEL': 'gpt-4o-mini'}):
             return ArchetypeClassificationPipeline(
                 model_provider='openai',
                 prompt_id='test_v1'
@@ -350,7 +350,7 @@ class TestLLMIntegration:
     """Tests for LLM API integration"""
     
     @patch('src.etl.archetype_pipeline.get_llm_client')
-    def test_classify_decklist_success(self, mock_get_client, pipeline):
+    def test_classify_deck_success(self, mock_get_client, pipeline):
         """Test successful decklist classification"""
         # Mock LLM client
         mock_client = Mock()
@@ -377,7 +377,7 @@ class TestLLMIntegration:
             }
         ]
         
-        result = pipeline.classify_decklist_llm(
+        result = pipeline.classify_deck_llm(
             cards=cards,
             format_name='Modern'
         )
@@ -387,7 +387,7 @@ class TestLLMIntegration:
         assert result.confidence == 0.92
     
     @patch('src.etl.archetype_pipeline.get_llm_client')
-    def test_classify_decklist_api_error(self, mock_get_client, pipeline):
+    def test_classify_deck_api_error(self, mock_get_client, pipeline):
         """Test handling of LLM API errors"""
         mock_client = Mock()
         mock_client.run.side_effect = Exception('API Error')
@@ -406,13 +406,13 @@ class TestLLMIntegration:
         ]
         
         with pytest.raises(Exception):
-            pipeline.classify_decklist_llm(
+            pipeline.classify_deck_llm(
                 cards=cards,
                 format_name='Modern'
             )
     
     @patch('src.etl.archetype_pipeline.get_llm_client')
-    def test_classify_decklist_invalid_response(self, mock_get_client, pipeline):
+    def test_classify_deck_invalid_response(self, mock_get_client, pipeline):
         """Test handling of invalid LLM response"""
         mock_client = Mock()
         mock_response = Mock()
@@ -433,7 +433,7 @@ class TestLLMIntegration:
         ]
         
         with pytest.raises((json.JSONDecodeError, ValueError)):
-            pipeline.classify_decklist_llm(
+            pipeline.classify_deck_llm(
                 cards=cards,
                 format_name='Modern'
             )
@@ -541,7 +541,7 @@ class TestGetDecklistMainboardCards:
 class TestClassifyDecklist:
     """Tests for insert_archetype method"""
     
-    @patch.object(ArchetypeClassificationPipeline, 'classify_decklist_llm')
+    @patch.object(ArchetypeClassificationPipeline, 'classify_deck_llm')
     def test_classify_success(self, mock_classify, pipeline, sample_cards, sample_classification):
         """Test successful classification"""
         mock_classify.return_value = sample_classification
@@ -566,7 +566,7 @@ class TestClassifyDecklist:
         assert any('INSERT INTO archetype_groups' in call for call in insert_calls)
         assert any('INSERT INTO archetype_classifications' in call for call in insert_calls)
     
-    @patch.object(ArchetypeClassificationPipeline, 'classify_decklist_llm')
+    @patch.object(ArchetypeClassificationPipeline, 'classify_deck_llm')
     def test_classify_failure(self, mock_classify, pipeline, sample_cards):
         """Test handling of classification failure"""
         mock_classify.return_value = None

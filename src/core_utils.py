@@ -22,7 +22,7 @@ def normalize_card_name(card_name: str) -> str:
     - Escaped characters from API responses
     
     Args:
-        card_name: Raw card name from decklist
+        card_name: Raw card name from deck
         
     Returns:
         Normalized card name
@@ -87,9 +87,9 @@ def normalize_card_name(card_name: str) -> str:
     return card_name
 
 
-def parse_decklist(decklist_text: str) -> List[Dict[str, any]]:
+def parse_deck(deck_text: str) -> List[Dict[str, any]]:
     """
-    Parse a standard MTG decklist text format to extract card quantities and names.
+    Parse a standard MTG deck text format to extract card quantities and names.
     
     Expected format: "4 Lightning Bolt" (quantity + card name)
     Supports mainboard/sideboard sections separated by:
@@ -98,25 +98,25 @@ def parse_decklist(decklist_text: str) -> List[Dict[str, any]]:
     - "// Sideboard" comment
     
     Args:
-        decklist_text: Raw decklist text string
+        deck_text: Raw deck text string
     
     Returns:
         List of dictionaries with keys: quantity (int), card_name (str), section (str)
         Section is either "mainboard" or "sideboard"
     """
-    if not decklist_text or not decklist_text.strip():
-        logger.debug("Empty decklist text provided to parse_decklist")
+    if not deck_text or not deck_text.strip():
+        logger.debug("Empty deck text provided to parse_deck")
         return []
     
     # Handle escaped newlines (common in API responses)
     # Replace literal \n with actual newlines
-    if '\\n' in decklist_text and '\n' not in decklist_text:
-        decklist_text = decklist_text.replace('\\n', '\n')
+    if '\\n' in deck_text and '\n' not in deck_text:
+        deck_text = deck_text.replace('\\n', '\n')
     
     cards = []
     current_section = "mainboard"
-    lines = decklist_text.split('\n')
-    logger.debug(f"Parsing decklist with {len(lines)} lines")
+    lines = deck_text.split('\n')
+    logger.debug(f"Parsing deck with {len(lines)} lines")
     
     # Patterns for sideboard detection
     sideboard_only_patterns = [
@@ -206,11 +206,11 @@ def parse_decklist(decklist_text: str) -> List[Dict[str, any]]:
             })
         else:
             # Log malformed entries but continue processing
-            logger.debug(f"Skipping malformed decklist line: {line}")
+            logger.debug(f"Skipping malformed deck line: {line}")
     
     mainboard_count = sum(1 for c in cards if c['section'] == 'mainboard')
     sideboard_count = sum(1 for c in cards if c['section'] == 'sideboard')
-    logger.debug(f"Parsed decklist: {len(cards)} total cards ({mainboard_count} mainboard, {sideboard_count} sideboard)")
+    logger.debug(f"Parsed deck: {len(cards)} total cards ({mainboard_count} mainboard, {sideboard_count} sideboard)")
     
     return cards
 

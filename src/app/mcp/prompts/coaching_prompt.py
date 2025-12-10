@@ -12,7 +12,7 @@ Your Deck: {archetype}
 Opponent's Deck: {opponent_archetype}
 {matchup_context}
 
-# Your Decklist
+# Your Deck
 {deck_details}
 
 # Task
@@ -55,5 +55,5 @@ Provide comprehensive piloting advice for this matchup. Structure your response 
 - What removal spells or answers do they have?
 - What tricks or combos should you play around?
 
-Provide specific, actionable advice grounded in the cards available in both decklists. Be concise but thorough."""
+Provide specific, actionable advice grounded in the cards available in both decks. Be concise but thorough."""
 

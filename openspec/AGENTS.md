@@ -198,10 +198,11 @@ If multiple capabilities are affected, create multiple delta files under `change
 4. **Create tasks.md:**
 ```markdown
 ## 1. Implementation
-- [ ] 1.1 Create database schema
+- [ ] 1.1 Write tests. Test driven development is the standard. 
 - [ ] 1.2 Implement API endpoint
 - [ ] 1.3 Add frontend component
-- [ ] 1.4 Write tests
+- [ ] 1.4 Run tests. Do not skip tests if the code isnt working. Find the root cause and fix or ask for clarification.
+
 ```
 
 5. **Create design.md when needed:**
@@ -402,6 +403,10 @@ Only add complexity with:
 - Use kebab-case, short and descriptive: `add-two-factor-auth`
 - Prefer verb-led prefixes: `add-`, `update-`, `remove-`, `refactor-`
 - Ensure uniqueness; if taken, append `-2`, `-3`, etc.
+
+### Testing
+- If you write any application functionality lead with test driven development
+- Do not insert skip logic if tests arent working. Find the root cause and try to fix in source code. 
 
 ## Tool Selection Guide
 

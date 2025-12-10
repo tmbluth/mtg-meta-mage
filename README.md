@@ -1,16 +1,15 @@
 # MTG Meta Mage
 
-An AI-powered tool for analyzing Magic: The Gathering decklists against the competitive meta. Users can submit a decklist and format to get insights via LLM analysis.
+An AI-powered tool for analyzing Magic: The Gathering decks against the competitive meta. Users can submit a deck and format to get insights via LLM analysis.
 
 ## Features
 
-- Card data collection from Scryfall API with format legality tracking
-- Tournament data collection from TopDeck.gg API
-- LLM-powered archetype classification for decklists
-- PostgreSQL database for storing tournament, player, decklist, match, cards, and archetype data
-- Initial bulk load and incremental update capabilities for all data types
-- MCP server with tools for meta research, deck coaching, and deck optimization
-- REST API for meta analytics (archetype rankings, matchup matrices)
+- **Data Collection**: Card data from Scryfall API, tournament data from TopDeck.gg API
+- **AI Classification**: LLM-powered archetype classification for decks
+- **Database**: PostgreSQL for storing tournament, player, deck, match, cards, and archetype data
+- **ETL Pipelines**: Initial bulk load and incremental update capabilities for all data types
+- **Agent API**: LangGraph-powered conversational interface with intent routing, state management, and SSE streaming
+- **MCP Server**: Discoverable tools for meta research, deck coaching, and deck optimization
 
 ## Roadmap
 
@@ -59,7 +58,7 @@ DB_PASSWORD=your_db_password
 TOPDECK_API_KEY=your_topdeck_api_key
 
 # LLM Configuration (for archetype classification)
-LLM_MODEL=gpt-4o-mini  # Model name/deployment name
+LARGE_LANGUAGE_MODEL=gpt-4o-mini  # Model name/deployment name
 
 # Azure OpenAI (if using Azure)
 AZURE_OPENAI_API_KEY=your_azure_api_key
@@ -90,15 +89,15 @@ The database includes the following tables:
 #### Tournament Data Tables
 - **tournaments**: Tournament metadata (ID, name, format, dates, location). **Commander and Limited formats are filtered out**
 - **players**: Player performance data per tournament (depends on `tournaments`)
-- **decklists**: Decklist text storage linked to players (depends on `players`)
+- **decklists**: Deck list text storage linked to players (depends on `players`)
 - **match_rounds**: Round information for tournaments (depends on `tournaments`)
 - **matches**: Individual match results (1v1 only) (depends on `match_rounds` and `players`)
 
 #### Card + Tournament Table
-- **deck_cards**: Junction table linking tournament decklists to individual cards
-  - Stores parsed card entries from decklists with quantities and sections (mainboard/sideboard)
+- **deck_cards**: Junction table linking tournament decks to individual cards
+  - Stores parsed card entries from decks with quantities and sections (mainboard/sideboard)
   - Depends on both `decklists` and `cards` tables
-  - Cards are parsed from `decklist_text` using `parse_decklist()` utility function
+  - Cards are parsed from `decklist_text` using `parse_deck()` utility function
 
 #### Archetype Classification Tables
 - **archetype_groups**: Stores unique archetype definitions (format, main_title, color_identity, strategy)
@@ -118,7 +117,7 @@ The database includes the following tables:
 
 **IMPORTANT**: Tables must be loaded in a specific order due to foreign key constraints:
 
-1. **Cards must be loaded before tournaments** - The `deck_cards` table has a foreign key to `cards`. If cards aren't loaded first, decklist parsing will still run but cards won't be found and won't be stored in `deck_cards`, resulting in incomplete decklist data.
+1. **Cards must be loaded before tournaments** - The `deck_cards` table has a foreign key to `cards`. If cards aren't loaded first, deck parsing will still run but cards won't be found and won't be stored in `deck_cards`, resulting in incomplete deck data.
 
 2. **Tournament data internal order** (handled automatically by the pipeline):
    - `tournaments` → `players` → `decklists` → `deck_cards` (requires cards to exist)
@@ -134,7 +133,7 @@ The database includes the following tables:
 
 #### Loading Card Data from Scryfall
 
-Before loading tournaments, you should load card data from Scryfall. This populates the `cards` table with oracle card information needed for decklist parsing.
+Before loading tournaments, you should load card data from Scryfall. This populates the `cards` table with oracle card information needed for deck parsing.
 
 ```bash
 # Initial load (full refresh)
@@ -149,7 +148,7 @@ uv run python src/etl/main.py --data-type cards --mode initial --batch-size 500
 
 #### Loading Tournament Data
 
-The incremental load automatically tracks the last loaded tournament timestamp and only fetches new data. When tournaments are loaded, decklists are automatically parsed and linked to cards in the `deck_cards` table.
+The incremental load automatically tracks the last loaded tournament timestamp and only fetches new data. When tournaments are loaded, decks are automatically parsed and linked to cards in the `deck_cards` table.
 
 The TopDeck API has a rate limit of 200 requests per minute. The client automatically enforces this limit with a 300ms delay between requests and includes retry logic for rate limit errors.
 
@@ -163,7 +162,7 @@ uv run python src/etl/main.py --data-type tournaments --mode incremental
 
 #### Loading Archetype Classifications
 
-Archetype classification uses LLMs to automatically categorize decklists by analyzing mainboard cards. This requires both card and tournament data to be loaded first, and requires LLM API credentials.
+Archetype classification uses LLMs to automatically categorize decks by analyzing mainboard cards. This requires both card and tournament data to be loaded first, and requires LLM API credentials.
 
 **Key Features:**
 - Analyzes mainboard cards (name, oracle text, type, mana cost, CMC, color identity)
@@ -174,11 +173,14 @@ Archetype classification uses LLMs to automatically categorize decklists by anal
 **Strategy Types:** aggro, midrange, control, ramp, combo
 
 ```bash
-# Initial load - classify all unclassified decklists
+# Initial load - classify all unclassified decks (uses DB_NAME env var or defaults to mtg-meta-mage-db)
 uv run python src/etl/main.py --data-type archetypes --mode initial --model-provider azure_openai --prompt-id archetype_classification_v1
 
-# Incremental load - classify decklists from tournaments since last archetype load
+# Incremental load - classify decks from tournaments since last archetype load
 uv run python src/etl/main.py --data-type archetypes --mode incremental --model-provider azure_openai --prompt-id archetype_classification_v1
+
+# Load into test database
+uv run python src/etl/main.py --data-type archetypes --mode initial --database mtg-meta-mage-db-test --model-provider azure_openai --prompt-id archetype_classification_v1
 ```
 
 **Example Classification Output:**
@@ -190,15 +192,228 @@ confidence: 0.95
 ```
 
 **Reclassification Strategy:**
-- Update `LLM_MODEL` environment variable to use a different model
+- Update `LARGE_LANGUAGE_MODEL` environment variable to use a different model
 - Modify prompt template in `src/etl/prompts/archetype_classification_v{?}.txt` (or create new version)
-- Run `--mode initial` to reclassify existing decklists with new model/prompt
+- Run `--mode initial` to reclassify existing decks with new model/prompt
 - Historical classifications are preserved in `archetype_classifications` table
-- Each decklist's `archetype_group_id` is updated to the latest classification
+- Each deck's `archetype_group_id` is updated to the latest classification
 
-## MCP Server & API
+## Agent API & MCP Server
 
-The application exposes capabilities through both an MCP server (for AI agents) and a REST API (for direct access). Both use the same underlying MCP tools, ensuring consistency.
+The application provides two access methods:
+1. **Agent API** - Conversational chat interface with LangGraph orchestration
+2. **MCP Server** - Discoverable tools for AI agents (Claude Desktop, etc.)
+
+Both use the same underlying MCP tools, ensuring consistency.
+
+### Agent API (Conversational Interface)
+
+The Agent API provides a conversational chat interface powered by LangGraph that orchestrates MCP tools based on user intent. It maintains conversation state, enforces dependencies, and supports streaming responses.
+
+**Key Features:**
+- Intent-based routing between meta research and deck coaching workflows
+- State management across conversation turns (format, archetype, deck data)
+- Blocking dependency enforcement (e.g., deck required before optimization)
+- SSE streaming with real-time updates (thinking, tool calls, content)
+- Workflow interleaving (seamlessly switch between meta and deck workflows)
+
+**Starting the Agent API:**
+
+```bash
+# Development mode with auto-reload
+uv run uvicorn src.app.agent_api.main:app --reload --host 0.0.0.0 --port 8001
+
+# Production mode
+uv run uvicorn src.app.agent_api.main:app --host 0.0.0.0 --port 8001
+```
+
+The Agent API will be available at `http://localhost:8001`. OpenAPI documentation is available at:
+- Swagger UI: `http://localhost:8001/docs`
+- ReDoc: `http://localhost:8001/redoc`
+
+**Agent API Endpoints:**
+
+#### GET /welcome
+
+Discovery endpoint that shows available workflows, formats, and tools before starting a conversation.
+
+```bash
+curl "http://localhost:8001/welcome"
+```
+
+**Response:**
+```json
+{
+  "message": "Welcome to MTG Meta Mage! Here's what I can help you with:",
+  "available_formats": ["Modern", "Pioneer", "Legacy", "Standard"],
+  "workflows": [
+    {
+      "name": "meta_research",
+      "description": "Format-wide analytics: meta rankings, matchup spreads, archetype lists",
+      "example_queries": ["What are the top decks in Modern?", "Show me the Pioneer meta"],
+      "tool_details": [
+        {"name": "get_format_meta_rankings", "description": "..."},
+        {"name": "get_format_matchup_stats", "description": "..."},
+        {"name": "get_format_archetypes", "description": "..."}
+      ]
+    },
+    {
+      "name": "deck_coaching",
+      "description": "Personalized coaching for your specific deck",
+      "example_queries": ["How should I play against Tron?", "Optimize my sideboard"],
+      "tool_details": [
+        {"name": "get_enriched_deck", "description": "..."},
+        {"name": "get_deck_matchup_stats", "description": "..."},
+        {"name": "generate_deck_matchup_strategy", "description": "..."},
+        {"name": "optimize_mainboard", "description": "..."},
+        {"name": "optimize_sideboard", "description": "..."}
+      ]
+    }
+  ],
+  "tool_count": 8
+}
+```
+
+#### POST /chat
+
+Start or continue a conversation with streaming responses via Server-Sent Events (SSE).
+
+**Request:**
+```bash
+curl -X POST "http://localhost:8001/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What are the top decks in Modern?",
+    "conversation_id": null,
+    "context": {
+      "format": "Modern",
+      "days": 30
+    }
+  }'
+```
+
+**Response (SSE stream):**
+```
+event: metadata
+data: {"conversation_id": "abc123", "format": "Modern"}
+
+event: thinking
+data: {"content": "Analyzing Modern meta rankings..."}
+
+event: tool_call
+data: {"tool": "get_format_meta_rankings", "status": "calling", "arguments": {"format": "Modern", "current_days": 30}}
+
+event: tool_call
+data: {"tool": "get_format_meta_rankings", "status": "complete", "summary": "Found 15 archetypes"}
+
+event: content
+data: {"text": "Based on the last 30 days of Modern data, here are the top archetypes:\n\n"}
+
+event: content
+data: {"text": "1. **Boros Energy** - 12.3% meta share, 54.2% win rate\n"}
+
+event: state
+data: {"has_deck": false, "format": "Modern", "archetype": null, "days": 30}
+
+event: done
+data: {}
+```
+
+**SSE Event Types:**
+- `metadata` - Session info (conversation_id, format, archetype)
+- `thinking` - Agent reasoning (optional)
+- `tool_call` - Tool execution progress (calling/complete)
+- `content` - Response text chunks
+- `state` - State snapshot for UI synchronization
+- `done` - Stream completion signal
+
+**Conversation Context:**
+- `format` (required) - Tournament format (Modern, Pioneer, etc.)
+- `days` (optional) - Time window for meta analysis
+- `archetype` (optional) - Archetype name after deck is provided
+- `deck_text` (optional) - Raw deck list for coaching
+
+**Workflow Routing:**
+The agent automatically routes to the appropriate workflow based on intent:
+- **Meta Research**: "top decks", "the meta", "matchup spread" (no deck provided)
+- **Deck Coaching**: "my deck", "optimize", "how should I play" (deck provided)
+
+**Blocking Dependencies:**
+The agent enforces these dependencies before tool execution:
+1. All tools require `format` - prompt user to select from dropdown
+2. Deck coaching tools require `card_details` from prior `get_enriched_deck`
+3. Deck coaching requires `archetype` - prompt after deck is provided
+4. `generate_deck_matchup_strategy` requires `matchup_stats` from prior `get_deck_matchup_stats`
+5. Meta tools prompt for `days` preference if not provided
+
+#### GET /formats
+
+Get available tournament formats for dropdown selection.
+
+```bash
+curl "http://localhost:8001/formats"
+```
+
+**Response:**
+```json
+{
+  "formats": ["Modern", "Pioneer", "Legacy", "Standard", "Vintage", "Pauper"]
+}
+```
+
+#### GET /archetypes
+
+Get archetypes for a selected format with metadata for dropdown display.
+
+```bash
+curl "http://localhost:8001/archetypes?format=Modern"
+```
+
+**Response:**
+```json
+{
+  "format": "Modern",
+  "archetypes": [
+    {
+      "id": 1,
+      "name": "Boros Energy",
+      "meta_share": 12.3,
+      "color_identity": "RW"
+    },
+    {
+      "id": 2,
+      "name": "Golgari Yawgmoth",
+      "meta_share": 8.7,
+      "color_identity": "BG"
+    }
+  ]
+}
+```
+
+#### GET /conversations/{conversation_id}
+
+Resume an existing conversation by retrieving its state and history.
+
+```bash
+curl "http://localhost:8001/conversations/abc123"
+```
+
+**Response:**
+```json
+{
+  "conversation_id": "abc123",
+  "state": {
+    "format": "Modern",
+    "archetype": "Burn",
+    "days": 30,
+    "has_deck": true
+  },
+  "messages": [
+    {"role": "user", "content": "What's the Modern meta?"},
+    {"role": "assistant", "content": "Based on the last 30 days..."}
+  ]
+}
+```
 
 ### MCP Server
 
@@ -207,184 +422,18 @@ The MCP server runs alongside the FastAPI application and provides discoverable 
 **Meta Research Tools:**
 - `get_format_meta_rankings` - Archetype rankings with meta share and win rates
 - `get_format_matchup_stats` - Head-to-head matchup matrix for all archetypes
+- `get_format_archetypes` - List all archetypes in a format with metadata
 
 **Deck Coaching Tools:**
-- `parse_and_validate_decklist` - Parse decklist and enrich with card details
+- `get_enriched_deck` - Parse deck and enrich with card details from database
 - `get_deck_matchup_stats` - Get matchup statistics for a specific archetype
-- `generate_matchup_strategy` - AI-powered coaching for specific matchups
+- `generate_deck_matchup_strategy` - AI-powered coaching for specific matchups
 
 **Deck Optimization Tools:**
 - `optimize_mainboard` - Identify flex spots and recommend replacements based on top meta archetypes
 - `optimize_sideboard` - Suggest sideboard changes to answer the most frequent meta matchups
 
 The MCP server is accessible at `http://localhost:8000/mcp` and can be used by any MCP client (Claude Desktop, custom agents, etc.).
-
-### Meta Analytics API
-
-The REST API provides endpoints for querying archetype performance and matchup data across all constructed formats.
-
-### Starting the API Server
-
-Start the FastAPI server using uvicorn:
-
-```bash
-# Development mode with auto-reload
-uv run uvicorn src.app.api.main:app --reload --host 0.0.0.0 --port 8000
-
-# Production mode
-uv run uvicorn src.app.api.main:app --host 0.0.0.0 --port 8000
-```
-
-The API will be available at `http://localhost:8000`. OpenAPI documentation is available at:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-### API Endpoints
-
-#### GET /health
-
-Health check endpoint to verify API is running.
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-11-24T12:00:00Z"
-}
-```
-
-#### GET /api/v1/meta/archetypes
-
-Get archetype rankings with meta share and win rates for a format.
-
-**Query Parameters:**
-- `format` (required): Tournament format (e.g., "Modern", "Pioneer", "Standard")
-- `current_days` (optional, default: 14): Number of days back from today for current period
-- `previous_days` (optional, default: 14): Number of days back from end of current period for previous period
-- `color_identity` (optional): Filter by color identity (e.g., "dimir", "jeskai")
-- `strategy` (optional): Filter by strategy ("aggro", "midrange", "control", "ramp", "combo")
-- `group_by` (optional): Group results by "color_identity" or "strategy"
-
-**Example Request:**
-```bash
-curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern"
-```
-
-**Example Response:**
-```json
-{
-  "data": [
-    {
-      "main_title": "rakdos_midrange",
-      "color_identity": "rakdos",
-      "strategy": "midrange",
-      "meta_share_current": 18.2,
-      "meta_share_previous": 16.5,
-      "win_rate_current": 54.7,
-      "win_rate_previous": 52.9,
-      "sample_size_current": 30,
-      "sample_size_previous": 26,
-      "match_count_current": 120,
-      "match_count_previous": 95
-    }
-  ],
-  "metadata": {
-    "format": "Pioneer",
-    "current_period": {
-      "days": 14,
-      "start_date": "2025-11-10T00:00:00Z",
-      "end_date": "2025-11-24T00:00:00Z"
-    },
-    "previous_period": {
-      "days": 14,
-      "start_date": "2025-10-27T00:00:00Z",
-      "end_date": "2025-11-10T00:00:00Z"
-    },
-    "timestamp": "2025-11-24T12:00:00Z"
-  }
-}
-```
-
-**Filtering Examples:**
-```bash
-# Filter by color identity
-curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&color_identity=red"
-
-# Filter by strategy
-curl "http://localhost:8000/api/v1/meta/archetypes?format=Pioneer&strategy=aggro"
-
-# Group by color identity
-curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&group_by=color_identity"
-
-# Custom time windows (last 7 days vs 14 days before that)
-curl "http://localhost:8000/api/v1/meta/archetypes?format=Modern&current_days=7&previous_days=14"
-```
-
-#### GET /api/v1/meta/matchups
-
-Get matchup matrix showing head-to-head win rates between archetypes.
-
-**Query Parameters:**
-- `format` (required): Tournament format (e.g., "Modern", "Pioneer", "Standard")
-- `days` (optional, default: 14): Number of days to include in analysis
-
-**Example Request:**
-```bash
-curl "http://localhost:8000/api/v1/meta/matchups?format=Modern"
-```
-
-**Example Response:**
-```json
-{
-  "matrix": {
-    "delver": {
-      "mystic_forge": {
-        "win_rate": 48.0,
-        "match_count": 25
-      },
-      "reanimator": {
-        "win_rate": 53.0,
-        "match_count": 18
-      }
-    },
-    "mystic_forge": {
-      "delver": {
-        "win_rate": 52.0,
-        "match_count": 25
-      },
-      "reanimator": {
-        "win_rate": 46.5,
-        "match_count": 20
-      }
-    },
-    "reanimator": {
-      "delver": {
-        "win_rate": 47.0,
-        "match_count": 18
-      },
-      "mystic_forge": {
-        "win_rate": 53.5,
-        "match_count": 20
-      }
-    }
-  },
-  "archetypes": ["delver", "mystic_forge", "reanimator"],
-  "metadata": {
-    "format": "Legacy",
-    "days": 14,
-    "start_date": "2025-11-10T00:00:00Z",
-    "timestamp": "2025-11-24T12:00:00Z"
-  }
-}
-```
-
-**Note:** Win rates may be `null` for matchups with fewer than 3 matches (insufficient data).
-
-**Custom Time Window Example:**
-```bash
-# Last 30 days
-curl "http://localhost:8000/api/v1/meta/matchups?format=Pioneer&days=30"
-```
 
 ### Deck Optimization MCP Tools
 
@@ -393,14 +442,14 @@ The deck optimization tools are available through the MCP server and can be used
 **optimize_mainboard** - Identifies flex spots in your mainboard and recommends replacements based on top meta archetypes:
 - Analyzes deck against top N meta archetypes (default: 5)
 - Filters recommendations to format-legal cards matching your deck's color identity
-- Uses actual meta decklists (up to 5 per archetype) to inform suggestions
+- Uses actual meta decks (up to 5 per archetype) to inform suggestions
 - Provides detailed justifications for each recommendation
 
 **optimize_sideboard** - Suggests sideboard changes to answer the most frequent meta matchups:
 - Recommends additions/removals to improve matchup coverage
 - Generates matchup-specific sideboard plans (what to bring in/out)
 - Enforces 15-card sideboard constraint with retry logic
-- Uses observed opponent sideboard strategies from meta decklists
+- Uses observed opponent sideboard strategies from meta decks
 
 **Usage via MCP Client:**
 ```python
@@ -453,6 +502,43 @@ Or run individual test files:
 uv run pytest tests/test_your_file.py
 ```
 
+### Database Configuration for Testing
+
+The ETL pipelines support specifying a target database via the `--database` argument. This is useful for:
+- Populating test databases with data
+- Running pipelines against different environments
+- Isolating test data from production
+
+**Default Behavior:**
+- If `--database` is not specified, the pipeline uses the `DB_NAME` environment variable
+- `DB_NAME` should be set in your `.env` file (e.g., `mtg-meta-mage-db` for production)
+
+**Examples:**
+
+```bash
+# Load archetypes into test database
+uv run python src/etl/main.py \
+  --data-type archetypes \
+  --mode initial \
+  --database mtg-meta-mage-db-test \
+  --model-provider azure_openai \
+  --prompt-id archetype_classification_v1
+
+# Load cards into production database (uses DB_NAME env var or default)
+uv run python src/etl/main.py \
+  --data-type cards \
+  --mode initial
+
+# Load tournaments into a custom database
+uv run python src/etl/main.py \
+  --data-type tournaments \
+  --mode initial \
+  --days 90 \
+  --database my-custom-db
+```
+
+**Note:** The test suite automatically manages the test database (`TEST_DB_NAME`) and loads required data via fixtures. You typically only need to manually run ETL pipelines for the test database if you want to pre-populate it before running tests.
+
 ## Project Structure
 
 ```
@@ -460,18 +546,29 @@ mtg-meta-mage/
 ├── src/
 │   ├── clients/              # External API clients (LLM, Scryfall, TopDeck)
 │   ├── app/
-│   │   ├── api/              # FastAPI routes (call MCP tools)
+│   │   ├── agent_api/        # LangGraph agent with conversational interface
+│   │   │   ├── graph.py       # LangGraph workflow (routing, subgraphs)
+│   │   │   ├── routes.py      # FastAPI routes (/chat, /welcome, etc.)
+│   │   │   ├── state.py       # Conversation state management
+│   │   │   ├── store.py       # In-memory conversation storage
+│   │   │   ├── streaming.py   # SSE event formatting
+│   │   │   └── tool_catalog.py # MCP tool discovery
 │   │   └── mcp/              # MCP server (business logic)
 │   │       ├── tools/         # MCP tools (meta_research, deck_coaching)
 │   │       └── prompts/       # LLM prompt templates
 │   ├── etl/                  # ETL pipelines
 │   │   ├── database/         # Database connection & schema
 │   │   └── prompts/          # ETL prompt templates
-│   └── core_utils.py         # Shared utilities (parse_decklist, etc.)
+│   └── core_utils.py         # Shared utilities (parse_deck, etc.)
 ├── tests/
 │   ├── unit/
 │   ├── integration/
 │   └── postman/              # Postman collections for all endpoints
+│       ├── agent/             # Agent API collection
+│       └── mcp_server/        # MCP Server collection
+├── openspec/                 # Specifications and change proposals
+│   ├── specs/                # Current capabilities
+│   └── changes/              # Proposed changes
 ├── pyproject.toml
 ├── AGENTS.md
 └── README.md

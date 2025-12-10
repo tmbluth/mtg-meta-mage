@@ -8,7 +8,7 @@ from psycopg2.extras import execute_batch
 
 from src.clients.topdeck_client import TopDeckClient
 from src.etl.database.connection import DatabaseConnection
-from src.etl.etl_utils import parse_decklist, get_last_load_timestamp, update_load_metadata, find_fuzzy_card_match
+from src.etl.etl_utils import parse_deck, get_last_load_timestamp, update_load_metadata, find_fuzzy_card_match
 from src.etl.base_pipeline import BasePipeline
 
 logger = logging.getLogger(__name__)
@@ -376,19 +376,19 @@ class TournamentsPipeline(BasePipeline):
                 )
                 return
             
-            decklist_id = result[0]
+            decklist_id = result[0]  # DB primary key
             
-            # Parse decklist to extract cards
+            # Parse deck to extract cards
             try:
-                parsed_cards = parse_decklist(decklist_text)
+                parsed_cards = parse_deck(decklist_text)
             except Exception as e:
                 logger.error(
-                    f"Error parsing decklist for player {player_id}, tournament {tournament_id}: {e}"
+                    f"Error parsing deck for player {player_id}, tournament {tournament_id}: {e}"
                 )
                 return
             
             if not parsed_cards:
-                logger.debug(f"No cards found in decklist for player {player_id}, tournament {tournament_id}")
+                logger.debug(f"No cards found in deck for player {player_id}, tournament {tournament_id}")
                 return
             
             # Fetch all available cards once for fuzzy matching (if needed)

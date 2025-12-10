@@ -155,6 +155,65 @@ def get_format_matchup_stats(
     return {"matrix": matrix, "archetypes": archetypes, "metadata": metadata}
 
 
+@mcp.tool()
+def get_format_archetypes(format: str, days: int = 30) -> dict:
+    """
+    Get archetypes and meta share for a format over the recent window.
+
+    Args:
+        format: Tournament format (e.g., "Modern")
+        days: Lookback window in days (default: 30)
+    """
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
+    query = """
+        SELECT 
+            ag.archetype_group_id,
+            ag.main_title,
+            ag.color_identity,
+            COUNT(*) as deck_count
+        FROM decklists d
+        JOIN archetype_groups ag ON d.archetype_group_id = ag.archetype_group_id
+        JOIN tournaments t ON d.tournament_id = t.tournament_id
+        WHERE ag.format = %s
+          AND t.start_date >= %s
+        GROUP BY ag.archetype_group_id, ag.main_title, ag.color_identity
+    """
+
+    with DatabaseConnection.get_cursor() as cursor:
+        cursor.execute(query, (format, start_date))
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+
+    if not rows:
+        return {"format": format, "archetypes": []}
+
+    df = pl.DataFrame(rows, schema=columns, orient="row")
+
+    total_decks = df["deck_count"].sum()
+    if total_decks == 0:
+        return {"format": format, "archetypes": []}
+
+    ranked = (
+        df.with_columns(
+            (pl.col("deck_count") / total_decks * 100).alias("meta_share")
+        )
+        .sort("meta_share", descending=True)
+    )
+
+    archetypes = []
+    for row in ranked.iter_rows(named=True):
+        archetypes.append(
+            {
+                "id": row["archetype_group_id"],
+                "name": row["main_title"],
+                "meta_share": row["meta_share"],
+                "color_identity": row["color_identity"],
+            }
+        )
+
+    return {"format": format, "archetypes": archetypes}
+
+
 # Helper functions (not exposed as MCP tools)
 
 
