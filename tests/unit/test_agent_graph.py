@@ -40,10 +40,70 @@ def test_blocking_requires_format():
     assert "format" in reason.lower()
 
 
+def test_blocking_meta_research_requires_current_days():
+    """Test that meta_research workflow requires current_days to be set."""
+    state = create_initial_state()
+    state["format"] = "Modern"
+    # No current_days set
+    
+    allowed, reason = enforce_blocking(state, intent="meta_research")
+    assert allowed is False
+    assert "days" in reason.lower()
+
+
+def test_blocking_meta_research_allows_with_format_and_current_days():
+    """Test that meta_research workflow proceeds when format and current_days are set."""
+    state = create_initial_state()
+    state["format"] = "Modern"
+    state["current_days"] = 14
+    
+    allowed, reason = enforce_blocking(state, intent="meta_research")
+    assert allowed is True
+    assert reason is None
+
+
+def test_blocking_deck_coaching_requires_card_details():
+    """Test that deck_coaching requires card_details (enriched deck)."""
+    state = create_initial_state()
+    state["format"] = "Modern"
+    state["current_days"] = 14
+    # No card_details
+    
+    allowed, reason = enforce_blocking(state, intent="deck_coaching")
+    assert allowed is False
+    assert "deck" in reason.lower()
+
+
+def test_blocking_deck_coaching_requires_archetype():
+    """Test that deck_coaching requires archetype after deck is provided."""
+    state = create_initial_state()
+    state["format"] = "Modern"
+    state["current_days"] = 14
+    state["card_details"] = [{"name": "Lightning Bolt"}]
+    # No archetype
+    
+    allowed, reason = enforce_blocking(state, intent="deck_coaching")
+    assert allowed is False
+    assert "archetype" in reason.lower()
+
+
+def test_blocking_deck_coaching_allows_with_all_requirements():
+    """Test that deck_coaching proceeds when all requirements are met."""
+    state = create_initial_state()
+    state["format"] = "Modern"
+    state["current_days"] = 14
+    state["card_details"] = [{"name": "Lightning Bolt"}]
+    state["archetype"] = "Burn"
+    
+    allowed, reason = enforce_blocking(state, intent="deck_coaching")
+    assert allowed is True
+    assert reason is None
+
+
 def test_interleaving_preserves_state_between_workflows():
     state = create_initial_state()
     state["format"] = "Modern"
-    state["days"] = 30
+    state["current_days"] = 30
 
     state = update_workflow(state, "meta_research")
     assert state["current_workflow"] == "meta_research"
@@ -51,7 +111,7 @@ def test_interleaving_preserves_state_between_workflows():
     state = update_workflow(state, "deck_coaching")
     assert state["current_workflow"] == "deck_coaching"
     assert state["format"] == "Modern"
-    assert state["days"] == 30
+    assert state["current_days"] == 30
 
 
 class TestGenerateResponse:
@@ -64,7 +124,7 @@ class TestGenerateResponse:
         
         state = create_initial_state()
         state["format"] = "Modern"
-        state["days"] = 30
+        state["current_days"] = 30
         state["tool_catalog"] = [{"name": "get_format_meta_rankings", "description": "Get rankings"}]
         
         tool_results = [
@@ -106,7 +166,7 @@ class TestGenerateResponse:
         
         state = create_initial_state()
         state["format"] = "Modern"
-        state["days"] = 30
+        state["current_days"] = 30
         state["archetype"] = "Burn"
         
         generate_response(state, "What are my matchups?", [])
@@ -115,7 +175,7 @@ class TestGenerateResponse:
         call_kwargs = mock_generate.call_args.kwargs
         context = call_kwargs.get("conversation_context", {})
         assert context.get("format") == "Modern"
-        assert context.get("days") == 30
+        assert context.get("current_days") == 30
         assert context.get("archetype") == "Burn"
 
     @patch("src.app.agent_api.graph.generate_agent_response")

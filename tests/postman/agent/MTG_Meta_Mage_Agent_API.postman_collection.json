@@ -193,7 +193,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"message\": \"What are the top decks in Modern?\",\n  \"conversation_id\": null,\n  \"context\": {\n    \"format\": \"Modern\",\n    \"days\": 30\n  }\n}"
+              "raw": "{\n  \"message\": \"What are the top decks in Modern?\",\n  \"conversation_id\": null,\n  \"context\": {\n    \"format\": \"Modern\",\n    \"current_days\": 30\n  }\n}"
             },
             "url": {
               "raw": "{{base_url}}/chat",
@@ -233,7 +233,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"message\": \"What about Pioneer?\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"context\": {\n    \"format\": \"Pioneer\",\n    \"days\": 30\n  }\n}"
+              "raw": "{\n  \"message\": \"What about Pioneer?\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"context\": {\n    \"format\": \"Pioneer\",\n    \"current_days\": 30\n  }\n}"
             },
             "url": {
               "raw": "{{base_url}}/chat",
@@ -422,7 +422,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"message\": \"What are the top decks in {{format}}?\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"context\": {\n    \"format\": \"{{format}}\",\n    \"days\": 30\n  }\n}"
+                  "raw": "{\n  \"message\": \"What are the top decks in {{format}}?\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"context\": {\n    \"format\": \"{{format}}\",\n    \"current_days\": 30\n  }\n}"
                 },
                 "url": {
                   "raw": "{{base_url}}/chat",

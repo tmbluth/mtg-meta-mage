@@ -78,7 +78,7 @@ Rules:
 
 State:
 - format: {format}
-- days: {days}
+- current_days: {current_days}
 - archetype: {archetype}
 - deck_text_present: {has_deck_text}
 
@@ -133,7 +133,7 @@ def classify_intent(message: str, state: ConversationState) -> WorkflowIntent:
     ) or "(none)"
     prompt = INTENT_PROMPT_TEMPLATE.format(
         format=state.get("format"),
-        days=state.get("days"),
+        current_days=state.get("current_days"),
         archetype=state.get("archetype"),
         has_deck_text=bool(state.get("deck_text")),
         recent_messages=formatted_history,
@@ -155,7 +155,7 @@ def enforce_blocking(state: ConversationState, intent: WorkflowIntent):
     if not state.get("format"):
         return False, "Format is required before proceeding."
 
-    if intent == "meta_research" and state.get("days") is None:
+    if intent == "meta_research" and state.get("current_days") is None:
         return False, "Please provide a days window for meta analysis."
 
     if intent == "deck_coaching":
@@ -195,7 +195,7 @@ def generate_response(
     # Build conversation context from state
     conversation_context = {
         "format": state.get("format"),
-        "days": state.get("days"),
+        "current_days": state.get("current_days"),
         "archetype": state.get("archetype"),
     }
     

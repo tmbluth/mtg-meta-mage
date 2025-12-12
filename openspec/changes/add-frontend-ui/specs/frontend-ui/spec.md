@@ -19,8 +19,8 @@ The system SHALL provide a Streamlit-based frontend UI at `src/app/ui/app.py` th
 
 #### Scenario: Meta research controls displayed after format
 - **WHEN** user selects a format
-- **THEN** show current_days slider (7-90, default 14)
-- **AND** show previous_days slider (7-90, default 14)
+- **THEN** show current_days slider (14-365, default 30)
+- **AND** show previous_days slider (14-365, default 30)
 - **AND** user can immediately ask meta research questions
 
 #### Scenario: Deck coaching panel revealed on intent
@@ -29,7 +29,7 @@ The system SHALL provide a Streamlit-based frontend UI at `src/app/ui/app.py` th
 - **AND** UI reveals deck coaching panel with:
   - Archetype dropdown (populated from GET /archetypes?format=X)
   - Decklist textarea (prepopulated with "MAINBOARD\n\nSIDEBOARD\n")
-  - Meta days slider (7-90, default 14)
+  - Meta days slider (14-365, default 30)
   - Submit Deck button
 
 #### Scenario: Deck coaching disabled until requirements met

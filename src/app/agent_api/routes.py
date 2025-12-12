@@ -125,7 +125,8 @@ async def get_welcome():
 class ChatContext(BaseModel):
     format: Optional[str] = None
     archetype: Optional[str] = None
-    days: Optional[int] = None
+    current_days: Optional[int] = None
+    previous_days: Optional[int] = None
     deck_text: Optional[str] = None
 
 
@@ -172,7 +173,8 @@ async def get_conversation(conversation_id: str):
         "state": {
             "format": convo["state"].get("format"),
             "archetype": convo["state"].get("archetype"),
-            "days": convo["state"].get("days"),
+            "current_days": convo["state"].get("current_days"),
+            "previous_days": convo["state"].get("previous_days"),
             # has_deck is true if user provided deck_text OR we have enriched card_details
             "has_deck": bool(convo["state"].get("deck_text") or convo["state"].get("card_details")),
         },
@@ -185,8 +187,10 @@ def _apply_context(state: ConversationState, context: ChatContext) -> Conversati
         state["format"] = context.format
     if context.archetype:
         state["archetype"] = context.archetype
-    if context.days is not None:
-        state["days"] = context.days
+    if context.current_days is not None:
+        state["current_days"] = context.current_days
+    if context.previous_days is not None:
+        state["previous_days"] = context.previous_days
     if context.deck_text:
         state["deck_text"] = context.deck_text
     return state

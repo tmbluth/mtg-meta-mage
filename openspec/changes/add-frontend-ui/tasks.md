@@ -1,15 +1,15 @@
 ## 1. Backend Updates
 
-- [ ] 1.1 Write unit tests for updated backend schemas (`ConversationState`, `ChatContext` with `current_days`/`previous_days`)
-- [ ] 1.2 Update `ConversationState` in `state.py`: rename `days` to `current_days`, add `previous_days`
-- [ ] 1.3 Update `ChatContext` in `routes.py`: rename `days` to `current_days`, add `previous_days`
-- [ ] 1.4 Update `_apply_context` in `routes.py` to handle new parameters
-- [ ] 1.5 Write tests for `enforce_blocking` checking `current_days` instead of `days`
-- [ ] 1.6 Update `enforce_blocking` in `graph.py` to check `current_days` instead of `days`
-- [ ] 1.7 Update `summarize_state_for_ui` in `state.py` to return `current_days` instead of `days`
-- [ ] 1.8 Update SSE state event to emit `current_days` instead of `days`
-- [ ] 1.9 Run all backend tests (unit+integration) to ensure no broken references to `days`
-- [ ] 1.10 Update Postman collection with new parameter names
+- [x] 1.1 Write unit tests for updated backend schemas (`ConversationState`, `ChatContext` with `current_days`/`previous_days`)
+- [x] 1.2 Update `ConversationState` in `state.py`: rename `days` to `current_days`, add `previous_days`
+- [x] 1.3 Update `ChatContext` in `routes.py`: rename `days` to `current_days`, add `previous_days`
+- [x] 1.4 Update `_apply_context` in `routes.py` to handle new parameters
+- [x] 1.5 Write tests for `enforce_blocking` checking `current_days` instead of `days`
+- [x] 1.6 Update `enforce_blocking` in `graph.py` to check `current_days` instead of `days`
+- [x] 1.7 Update `summarize_state_for_ui` in `state.py` to return `current_days` instead of `days`
+- [x] 1.8 Update SSE state event to emit `current_days` instead of `days`
+- [x] 1.9 Run all backend tests (unit+integration) to ensure no broken references to `days`
+- [x] 1.10 Update Postman collection with new parameter names
 
 ## 2. Frontend Implementation
 

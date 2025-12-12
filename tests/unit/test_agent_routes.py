@@ -121,7 +121,7 @@ def test_chat_endpoint_streams_sse():
     payload = {
         "message": "What's the Modern meta?",
         "conversation_id": None,
-        "context": {"format": "Modern", "days": 30},
+        "context": {"format": "Modern", "current_days": 30},
     }
 
     response = client.post("/chat", json=payload)
@@ -150,7 +150,7 @@ def test_chat_endpoint_stores_tool_catalog_in_state(mock_get_tool_catalog):
     payload = {
         "message": "What's the Modern meta?",
         "conversation_id": None,
-        "context": {"format": "Modern", "days": 30},
+        "context": {"format": "Modern", "current_days": 30},
     }
     
     response = client.post("/chat", json=payload)
@@ -282,7 +282,8 @@ def test_chat_uses_welcome_session_info(mock_get_tool_catalog):
     # First, manually create a conversation with welcome info
     initial_state = {
         "format": None,
-        "days": None,
+        "current_days": None,
+        "previous_days": None,
         "archetype": None,
         "deck_text": None,
         "card_details": None,
@@ -302,7 +303,7 @@ def test_chat_uses_welcome_session_info(mock_get_tool_catalog):
     payload = {
         "message": "What's the Modern meta?",
         "conversation_id": conversation_id,
-        "context": {"format": "Modern", "days": 30},
+        "context": {"format": "Modern", "current_days": 30},
     }
     
     response = client.post("/chat", json=payload)
@@ -312,4 +313,141 @@ def test_chat_uses_welcome_session_info(mock_get_tool_catalog):
     updated_convo = conversation_store.get(conversation_id)
     assert updated_convo["state"].get("tool_catalog") is not None
     assert updated_convo["state"].get("available_formats") == ["Modern", "Pioneer"]
+
+
+def test_chat_context_accepts_current_days_and_previous_days():
+    """Test that ChatContext schema accepts current_days and previous_days parameters."""
+    from src.app.agent_api.routes import ChatContext
+    
+    # Test with both parameters
+    context = ChatContext(
+        format="Modern",
+        archetype="Rakdos Midrange",
+        current_days=14,
+        previous_days=30
+    )
+    assert context.format == "Modern"
+    assert context.archetype == "Rakdos Midrange"
+    assert context.current_days == 14
+    assert context.previous_days == 30
+    
+    # Test with only current_days
+    context2 = ChatContext(format="Pioneer", current_days=7)
+    assert context2.current_days == 7
+    assert context2.previous_days is None
+    
+    # Test with defaults
+    context3 = ChatContext()
+    assert context3.current_days is None
+    assert context3.previous_days is None
+
+
+def test_conversation_state_has_current_days_and_previous_days():
+    """Test that ConversationState supports current_days and previous_days fields."""
+    from src.app.agent_api.state import ConversationState, create_initial_state
+    
+    # Test creating state with new fields
+    state: ConversationState = {
+        "format": "Modern",
+        "current_days": 14,
+        "previous_days": 30,
+        "archetype": None,
+        "deck_text": None,
+        "card_details": None,
+        "matchup_stats": None,
+        "messages": [],
+        "current_workflow": None,
+        "tool_catalog": None,
+        "available_formats": None,
+        "workflows": None,
+    }
+    
+    assert state["current_days"] == 14
+    assert state["previous_days"] == 30
+    
+    # Test initial state has both fields as None
+    initial = create_initial_state()
+    assert "current_days" in initial
+    assert "previous_days" in initial
+    assert initial["current_days"] is None
+    assert initial["previous_days"] is None
+
+
+def test_apply_context_handles_current_days_and_previous_days():
+    """Test that _apply_context updates current_days and previous_days in state."""
+    from src.app.agent_api.routes import ChatContext, _apply_context
+    from src.app.agent_api.state import create_initial_state
+    
+    state = create_initial_state()
+    context = ChatContext(
+        format="Modern",
+        current_days=21,
+        previous_days=60
+    )
+    
+    updated = _apply_context(state, context)
+    
+    assert updated["format"] == "Modern"
+    assert updated["current_days"] == 21
+    assert updated["previous_days"] == 60
+
+
+def test_summarize_state_returns_current_days():
+    """Test that summarize_state_for_ui returns current_days instead of days."""
+    from src.app.agent_api.state import summarize_state_for_ui
+    
+    state = {
+        "format": "Pioneer",
+        "current_days": 14,
+        "previous_days": 30,
+        "archetype": "Rakdos Midrange",
+        "card_details": [{"name": "Thoughtseize"}],
+    }
+    
+    summary = summarize_state_for_ui(state)
+    
+    assert summary["has_deck"] is True
+    assert summary["format"] == "Pioneer"
+    assert summary["archetype"] == "Rakdos Midrange"
+    assert summary["current_days"] == 14
+    assert "days" not in summary
+    assert "previous_days" not in summary  # Only current_days is returned
+
+
+def test_chat_endpoint_with_current_days_and_previous_days():
+    """Test that /chat endpoint accepts and stores current_days and previous_days."""
+    payload = {
+        "message": "What's the Modern meta?",
+        "conversation_id": None,
+        "context": {
+            "format": "Modern",
+            "current_days": 14,
+            "previous_days": 30
+        },
+    }
+    
+    response = client.post("/chat", json=payload)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    
+    # Parse SSE stream to extract conversation_id
+    body = response.text
+    lines = body.split('\n')
+    conversation_id = None
+    for i, line in enumerate(lines):
+        if line == "event: metadata" and i + 1 < len(lines):
+            data_line = lines[i + 1]
+            if data_line.startswith("data: "):
+                data_json = data_line[6:]
+                metadata = json.loads(data_json)
+                conversation_id = metadata.get("conversation_id")
+                break
+    
+    assert conversation_id is not None
+    
+    # Verify state was updated with context
+    convo = conversation_store.get(conversation_id)
+    assert convo["state"]["format"] == "Modern"
+    assert convo["state"]["current_days"] == 14
+    assert convo["state"]["previous_days"] == 30
 

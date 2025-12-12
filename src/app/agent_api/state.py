@@ -12,7 +12,8 @@ class ConversationMessage(TypedDict):
 
 class ConversationState(TypedDict, total=False):
     format: Optional[str]
-    days: Optional[int]
+    current_days: Optional[int]
+    previous_days: Optional[int]
     archetype: Optional[str]
     deck_text: Optional[str]
     card_details: Optional[list]
@@ -30,7 +31,8 @@ def create_initial_state() -> ConversationState:
     """Return a fresh, empty conversation state."""
     return {
         "format": None,
-        "days": None,
+        "current_days": None,
+        "previous_days": None,
         "archetype": None,
         "deck_text": None,
         "card_details": None,
@@ -50,6 +52,6 @@ def summarize_state_for_ui(state: ConversationState) -> Dict[str, Any]:
         "has_deck": bool(state.get("deck_text") or state.get("card_details")),
         "format": state.get("format"),
         "archetype": state.get("archetype"),
-        "days": state.get("days"),
+        "current_days": state.get("current_days"),
     }
 

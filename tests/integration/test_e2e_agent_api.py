@@ -60,7 +60,7 @@ class TestAgentAPIFullConversationFlow:
             json={
                 "message": "What are the top decks in Modern?",
                 "conversation_id": None,
-                "context": {"format": "Modern", "days": 30},
+                "context": {"format": "Modern", "current_days": 30},
             },
         )
         assert chat_response.status_code == 200
@@ -89,7 +89,7 @@ class TestAgentAPIFullConversationFlow:
         convo_data = convo_response.json()
         assert convo_data["conversation_id"] == conversation_id
         assert convo_data["state"]["format"] == "Modern"
-        assert convo_data["state"]["days"] == 30
+        assert convo_data["state"]["current_days"] == 30
         assert len(convo_data["messages"]) >= 2  # User message + assistant response
 
     async def test_conversation_continuation(self, client, load_test_data):
@@ -100,7 +100,7 @@ class TestAgentAPIFullConversationFlow:
             json={
                 "message": "Show me Modern archetypes",
                 "conversation_id": None,
-                "context": {"format": "Modern", "days": 30},
+                "context": {"format": "Modern", "current_days": 30},
             },
         )
         assert chat1_response.status_code == 200
@@ -116,7 +116,7 @@ class TestAgentAPIFullConversationFlow:
             json={
                 "message": "What about Pioneer?",
                 "conversation_id": conversation_id,
-                "context": {"format": "Pioneer", "days": 30},
+                "context": {"format": "Pioneer", "current_days": 30},
             },
         )
         assert chat2_response.status_code == 200
@@ -172,7 +172,7 @@ class TestAgentAPIWorkflowInterleaving:
             json={
                 "message": "What's the Modern meta?",
                 "conversation_id": conversation_id,
-                "context": {"format": "Modern", "days": 30},
+                "context": {"format": "Modern", "current_days": 30},
             },
         )
         assert meta_response.status_code == 200
@@ -296,7 +296,7 @@ Sideboard:
             json={
                 "message": "Now show me the Pioneer meta",
                 "conversation_id": conversation_id,
-                "context": {"format": "Pioneer", "days": 30},
+                "context": {"format": "Pioneer", "current_days": 30},
             },
         )
         assert meta_response.status_code == 200
@@ -473,7 +473,7 @@ class TestAgentAPILLMInterpretation:
             json={
                 "message": "What are the top decks in Modern?",
                 "conversation_id": None,
-                "context": {"format": "Modern", "days": 30},
+                "context": {"format": "Modern", "current_days": 30},
             },
         )
         assert chat_response.status_code == 200
@@ -509,7 +509,7 @@ class TestAgentAPILLMInterpretation:
             json={
                 "message": "Show me archetypes in Pioneer",
                 "conversation_id": conversation_id,
-                "context": {"format": "Pioneer", "days": 30},
+                "context": {"format": "Pioneer", "current_days": 30},
             },
         )
         assert chat2_response.status_code == 200
@@ -646,7 +646,7 @@ class TestAgentAPIChatUsingWelcomeInfo:
             json={
                 "message": "What tools do you have available?",
                 "conversation_id": conversation_id,
-                "context": {"format": "Modern", "days": 30},
+                "context": {"format": "Modern", "current_days": 30},
             },
         )
         assert chat_response.status_code == 200
@@ -683,7 +683,7 @@ class TestAgentAPIChatUsingWelcomeInfo:
             json={
                 "message": "What are the top decks in Modern?",
                 "conversation_id": conversation_id,
-                "context": {"format": "Modern", "days": 30},
+                "context": {"format": "Modern", "current_days": 30},
             },
         )
         assert chat_response.status_code == 200
@@ -709,7 +709,7 @@ class TestAgentAPIChatUsingWelcomeInfo:
             json={
                 "message": "What are the top decks in Modern?",
                 "conversation_id": None,
-                "context": {"format": "Modern", "days": 30},
+                "context": {"format": "Modern", "current_days": 30},
             },
         )
         assert chat_response.status_code == 200
