@@ -11,7 +11,9 @@ Users need a visual interface to interact with the MTG Meta Mage Agent API. Curr
 - UI reveals deck coaching controls only when user expresses that intent
 
 ## Impact
-- Affected specs: `agent-api` (MODIFIED requirements for days parameter naming)
+- Affected specs: 
+  - `agent-api` (MODIFIED requirements for days parameter naming and state persistence)
+  - `frontend-ui` (ADDED requirements for Streamlit application)
 - Affected code:
   - `src/app/agent_api/routes.py` - ChatContext schema
   - `src/app/agent_api/state.py` - ConversationState schema
